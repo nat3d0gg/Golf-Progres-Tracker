@@ -515,9 +515,14 @@ const TERMS = [
   { term: 'Woods / Hybrids', cat: 'Clubs',  def: 'Fairway woods and hybrids for long shots off the ground. Hybrids are more forgiving than long irons.' },
   { term: 'Long Irons', cat: 'Clubs',       def: 'The 3–5 irons. Lower loft and harder to hit; many beginners replace these with hybrids.' },
   { term: 'Mid Irons',  cat: 'Clubs',       def: 'The 6–8 irons — the workhorse clubs for approach shots into the green.' },
-  { term: 'Wedges',     cat: 'Clubs',       def: 'The highest-loft clubs (pitching, gap, sand, lob) for short approaches, chips, and bunker shots.' }
+  { term: 'Wedges',     cat: 'Clubs',       def: 'The highest-loft clubs (pitching, gap, sand, lob) for short approaches, chips, and bunker shots.' },
+  // On the course — flag color system (pin position on the green)
+  { term: '⛳ Red Flag',           cat: 'On the Course', color: '#ef6b5c', def: 'The pin is at the FRONT of the green. Plan for a shorter shot / less club.' },
+  { term: '⛳ White or Yellow Flag', cat: 'On the Course', color: '#f5b53d', def: 'The pin is in the MIDDLE of the green. Aim for the center.' },
+  { term: '⛳ Blue Flag',          cat: 'On the Course', color: '#5aa9ff', def: 'The pin is at the BACK of the green. Plan for a longer shot / more club.' },
+  { term: 'Flag color system',    cat: 'On the Course', def: 'Many courses color the flags by pin position so you can judge distance from afar: red = front, white/yellow = middle, blue = back. Always check the scorecard — colors can vary by course.' }
 ];
-const TERM_CATS = ['Ball Flight', 'Contact', 'Swing', 'Clubs'];
+const TERM_CATS = ['Ball Flight', 'Contact', 'Swing', 'Clubs', 'On the Course'];
 
 /* ============================================================================
    2. DATA LAYER — the ONLY place that talks to localStorage.
@@ -1366,13 +1371,16 @@ function renderTerms() {
     sections += `
       <div class="card">
         <div class="section-label">${cat}</div>
-        ${items.map(t => `
+        ${items.map(t => {
+          const color = t.color || (cat === 'Ball Flight' ? FLIGHT_COLORS[t.term] : null);
+          return `
           <div class="term-row">
             <div class="term-head">
-              <span class="term-name" style="${cat === 'Ball Flight' && FLIGHT_COLORS[t.term] ? `color:${FLIGHT_COLORS[t.term]}` : ''}">${esc(t.term)}</span>
+              <span class="term-name" style="${color ? `color:${color}` : ''}">${esc(t.term)}</span>
             </div>
             <div class="term-def">${esc(t.def)}</div>
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>`;
   });
 
