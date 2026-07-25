@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1a14">
+<title>RangeLog — Golf Range & Lesson Tracker</title>
+<style>
+  /* ============================================================
+     RangeLog — single-file golf range & lesson tracker
+     Design: "night range under floodlights"
+     ============================================================ */
+
+  :root {
+    --bg:          #0c1611;   /* deep charcoal-green */
+    --bg-2:        #10201a;   /* panel base */
+    --surface:     #16291f;   /* card surface */
+    --surface-2:   #1d3528;   /* raised surface */
+    --border:      #274233;
+    --text:        #f4f8f5;   /* crisp white */
+    --text-dim:    #9db3a5;
+    --text-faint:  #6f8778;
+    --accent:      #4ade5b;   /* bright floodlight green */
+    --accent-dim:  #2f9c3d;
+    --accent-ink:  #04140a;   /* text on accent */
+    --amber:       #f5b53d;
+    --danger:      #ef6b5c;
+    --radius:      14px;
+    --radius-sm:   10px;
+    --tap:         44px;
+    --nav-h:       64px;
+    --shadow:      0 6px 24px rgba(0,0,0,0.45);
+    font-size: 16px;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(1200px 500px at 50% -10%, rgba(74,222,91,0.10), transparent 60%),
+      radial-gradient(900px 400px at 90% 110%, rgba(245,181,61,0.06), transparent 60%);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.45;
+    min-height: 100vh;
+    min-height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+  p { margin: 0; }
+  button { font-family: inherit; cursor: pointer; }
+
+  /* ---------- App shell / layout ---------- */
+  .app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: calc(env(safe-area-inset-top) + 12px) 16px 12px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: linear-gradient(180deg, rgba(12,22,17,0.98), rgba(12,22,17,0.86));
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .brand .logo {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: radial-gradient(circle at 30% 30%, var(--accent), var(--accent-dim));
+    display: grid; place-items: center; color: var(--accent-ink);
+    font-size: 17px; box-shadow: 0 0 14px rgba(74,222,91,0.4);
+    flex: none;
+  }
+  .brand h1 { font-size: 1.15rem; }
+  .brand .tag { color: var(--text-faint); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+  .topbar .spacer { flex: 1; }
+  .icon-btn {
+    height: var(--tap); min-width: var(--tap); padding: 0 12px;
+    border-radius: var(--radius-sm);
+    background: var(--surface); color: var(--text-dim);
+    border: 1px solid var(--border);
+    font-size: 0.8rem; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .icon-btn:active { background: var(--surface-2); }
+
+  /* Desktop side nav container */
+  .shell { display: flex; flex: 1; }
+
+  .sidenav { display: none; }
+
+  .main {
+    flex: 1;
+    width: 100%;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 16px 16px calc(var(--nav-h) + env(safe-area-inset-bottom) + 24px);
+  }
+
+  .view { animation: fade 0.18s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  .view-head { margin-bottom: 14px; }
+  .view-head h2 { font-size: 1.5rem; }
+  .view-head .sub { color: var(--text-dim); font-size: 0.88rem; margin-top: 2px; }
+
+  /* ---------- Cards & sections ---------- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .card.raised { box-shadow: var(--shadow); }
+  .section-label {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-faint); font-weight: 700; margin-bottom: 10px;
+  }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    height: var(--tap); padding: 0 18px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text);
+    font-size: 0.95rem; font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary {
+    background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+    color: var(--accent-ink); border-color: transparent;
+    box-shadow: 0 4px 16px rgba(74,222,91,0.28);
+  }
+  .btn.ghost { background: transparent; }
+  .btn.danger { background: transparent; color: var(--danger); border-color: rgba(239,107,92,0.4); }
+  .btn.block { width: 100%; }
+  .btn.sm { height: 38px; padding: 0 12px; font-size: 0.85rem; }
+
+  /* ---------- Chips ---------- */
+  .chip {
+    min-height: var(--tap); padding: 0 16px;
+    border-radius: 999px;
+    border: 1.5px solid var(--border);
+    background: var(--surface); color: var(--text-dim);
+    font-size: 0.92rem; font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .chip.on {
+    background: rgba(74,222,91,0.16); color: var(--accent);
+    border-color: var(--accent);
+  }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .chip.sm { min-height: 36px; padding: 0 12px; font-size: 0.82rem; }
+  .chip.amber.on { background: rgba(245,181,61,0.16); color: var(--amber); border-color: var(--amber); }
+
+  /* ---------- Inputs ---------- */
+  label.fld { display: block; margin-bottom: 12px; }
+  label.fld > span { display: block; font-size: 0.78rem; color: var(--text-dim); margin-bottom: 5px; font-weight: 600; }
+  input[type=text], input[type=date], textarea, select {
+    width: 100%; min-height: var(--tap);
+    background: var(--bg-2); color: var(--text);
+    border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+    padding: 10px 12px; font-size: 1rem; font-family: inherit;
+  }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 60px; }
+  ::placeholder { color: var(--text-faint); }
+
+  /* ---------- Club group mini panel ---------- */
+  .group-block { margin-bottom: 10px; }
+  .group-panel {
+    margin-top: 8px; padding: 12px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+  .group-panel .lbl { font-size: 0.74rem; color: var(--text-dim); font-weight: 600; margin-bottom: 7px; }
+  .contact-dots { display: flex; gap: 8px; margin-bottom: 12px; }
+  .dot {
+    width: var(--tap); height: var(--tap); border-radius: 50%;
+    border: 2px solid var(--border); background: var(--surface);
+    color: var(--text-dim); font-weight: 700; font-size: 0.95rem;
+    display: grid; place-items: center;
+  }
+  .dot.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); box-shadow: 0 0 10px rgba(74,222,91,0.4); }
+
+  /* ---------- Homework checkboxes ---------- */
+  .hw-item {
+    display: flex; align-items: center; gap: 12px;
+    min-height: var(--tap); padding: 8px 12px;
+    border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--surface); margin-bottom: 8px;
+  }
+  .hw-item.on { border-color: var(--accent); background: rgba(74,222,91,0.10); }
+  .hw-box {
+    width: 26px; height: 26px; border-radius: 7px; flex: none;
+    border: 2px solid var(--border); background: var(--bg-2);
+    display: grid; place-items: center; color: var(--accent-ink);
+    font-size: 16px; font-weight: 900;
+  }
+  .hw-item.on .hw-box { background: var(--accent); border-color: var(--accent); }
+  .hw-item .hw-name { font-weight: 600; }
+
+  /* ---------- Sticky save bar ---------- */
+  .savebar {
+    position: fixed; left: 0; right: 0;
+    bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
+    padding: 10px 16px calc(10px);
+    background: linear-gradient(180deg, rgba(12,22,17,0), rgba(12,22,17,0.95) 30%);
+    z-index: 25;
+    max-width: 780px; margin: 0 auto;
+  }
+  .savebar .btn { height: 52px; font-size: 1.05rem; }
+
+  /* ---------- Bottom tab nav ---------- */
+  .tabnav {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    height: calc(var(--nav-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    display: flex; z-index: 40;
+    background: rgba(10,18,14,0.97);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border);
+  }
+  .tabnav button {
+    flex: 1; background: none; border: none; color: var(--text-faint);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; font-size: 0.68rem; font-weight: 600; padding: 6px 0;
+  }
+  .tabnav button .ic { font-size: 1.25rem; line-height: 1; }
+  .tabnav button.active { color: var(--accent); }
+  .tabnav button.active .ic { filter: drop-shadow(0 0 6px rgba(74,222,91,0.5)); }
+
+  /* ---------- Lists / rows ---------- */
+  .row-item {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 14px; border-radius: var(--radius);
+    background: var(--surface); border: 1px solid var(--border);
+    margin-bottom: 10px;
+  }
+  .row-item.active-lesson { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .row-item .grow { flex: 1; min-width: 0; }
+  .pill {
+    display: inline-block; font-size: 0.66rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 3px 8px; border-radius: 999px;
+    background: rgba(74,222,91,0.18); color: var(--accent);
+  }
+  .pill.grey { background: var(--surface-2); color: var(--text-dim); }
+  .meta { color: var(--text-dim); font-size: 0.82rem; }
+  .drill-tag {
+    display: inline-block; font-size: 0.78rem; font-weight: 600;
+    padding: 4px 10px; border-radius: 999px; margin: 3px 4px 0 0;
+    background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border);
+  }
+
+  /* ---------- Empty state ---------- */
+  .empty {
+    text-align: center; padding: 40px 20px; color: var(--text-dim);
+  }
+  .empty .big { font-size: 2.6rem; margin-bottom: 10px; }
+  .empty h3 { color: var(--text); margin-bottom: 6px; }
+  .empty p { max-width: 320px; margin: 0 auto 16px; font-size: 0.9rem; }
+
+  /* ---------- Stats grid (Prep) ---------- */
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat {
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 12px 14px;
+  }
+  .stat .num { font-size: 1.7rem; font-weight: 800; color: var(--accent); line-height: 1.1; }
+  .stat .lbl { font-size: 0.74rem; color: var(--text-dim); margin-top: 2px; font-weight: 600; }
+
+  .kv { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .kv:last-child { border-bottom: none; }
+  .kv .k { font-weight: 600; }
+  .kv .v { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kv .v.grey { color: var(--text-dim); }
+
+  /* progress bar */
+  .bar-track { height: 8px; border-radius: 999px; background: var(--bg-2); overflow: hidden; margin-top: 6px; border: 1px solid var(--border); }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); border-radius: 999px; }
+
+  .note-line { padding: 10px 12px; background: var(--bg-2); border-radius: var(--radius-sm); margin-bottom: 8px; border: 1px solid var(--border); }
+  .note-line .d { font-size: 0.72rem; color: var(--text-faint); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  /* ---------- Charts ---------- */
+  .chart-wrap { width: 100%; overflow-x: auto; }
+  svg { display: block; width: 100%; height: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 10px; font-size: 0.78rem; color: var(--text-dim); }
+  .legend .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+
+  /* ---------- Drill form rows ---------- */
+  .drill-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+  .drill-row input { flex: 1; }
+  .drill-row .rm { flex: none; width: 40px; height: 40px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--danger); font-size: 1.3rem; }
+
+  /* ---------- Modal ---------- */
+  .modal-back {
+    position: fixed; inset: 0; z-index: 60;
+    background: rgba(4,10,7,0.7); backdrop-filter: blur(3px);
+    display: flex; align-items: flex-end; justify-content: center;
+    padding: 0;
+  }
+  .modal {
+    background: var(--bg-2); width: 100%; max-width: 560px;
+    border-radius: 20px 20px 0 0; border: 1px solid var(--border);
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+    max-height: 92vh; overflow-y: auto;
+    box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+    animation: slideup 0.22s ease;
+  }
+  @keyframes slideup { from { transform: translateY(30px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .modal-head h3 { font-size: 1.2rem; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 8px; }
+  .modal-actions .btn { flex: 1; }
+
+  /* ---------- Toast ---------- */
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 20px);
+    background: var(--accent); color: var(--accent-ink);
+    padding: 12px 22px; border-radius: 999px; font-weight: 700;
+    z-index: 80; box-shadow: 0 6px 24px rgba(74,222,91,0.4);
+    animation: toastin 0.25s ease;
+  }
+  @keyframes toastin { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+  .hidden { display: none !important; }
+  .mt8 { margin-top: 8px; } .mt12 { margin-top: 12px; } .mt16 { margin-top: 16px; }
+  .muted { color: var(--text-dim); font-size: 0.85rem; }
+  .link { color: var(--accent); font-weight: 600; text-decoration: underline; background: none; border: none; padding: 0; font-size: inherit; }
+
+  /* ============================================================
+     Desktop layout
+     ============================================================ */
+  @media (min-width: 860px) {
+    .tabnav { display: none; }
+    .app { flex-direction: column; }
+    .shell { max-width: 1100px; margin: 0 auto; width: 100%; }
+    .sidenav {
+      display: flex; flex-direction: column; gap: 4px;
+      width: 210px; flex: none; padding: 18px 12px;
+      position: sticky; top: 72px; align-self: flex-start;
+    }
+    .sidenav button {
+      display: flex; align-items: center; gap: 12px;
+      height: 48px; padding: 0 16px; border-radius: var(--radius-sm);
+      background: none; border: none; color: var(--text-dim);
+      font-size: 0.98rem; font-weight: 600; text-align: left; width: 100%;
+    }
+    .sidenav button .ic { font-size: 1.2rem; }
+    .sidenav button:hover { background: var(--surface); color: var(--text); }
+    .sidenav button.active { background: rgba(74,222,91,0.14); color: var(--accent); }
+    .main {
+      max-width: none; margin: 0;
+      padding: 24px 28px 48px;
+    }
+    .savebar {
+      position: static; padding: 4px 0 0; margin: 0;
+      background: none; max-width: none;
+    }
+    .savebar .btn { max-width: 320px; }
+    .stat-grid { grid-template-columns: repeat(4, 1fr); }
+    .modal-back { align-items: center; padding: 20px; }
+    .modal { border-radius: 20px; }
+  }
+
+  @media (min-width: 560px) and (max-width: 859px) {
+    .stat-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">⛳</div>
+      <div>
+        <h1>RangeLog</h1>
+        <div class="tag">Range &amp; Lesson Tracker</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <button class="icon-btn" id="btnExport" title="Export data">⬇ Export</button>
+    <button class="icon-btn" id="btnImport" title="Import data">⬆ Import</button>
+    <input type="file" id="importFile" accept="application/json,.json" class="hidden">
+  </header>
+
+  <div class="shell">
+    <!-- Desktop side nav -->
+    <nav class="sidenav" id="sidenav">
+      <button data-view="log"><span class="ic">🎯</span> Log</button>
+      <button data-view="lessons"><span class="ic">📘</span> Lessons</button>
+      <button data-view="prep"><span class="ic">📋</span> Prep</button>
+      <button data-view="trends"><span class="ic">📈</span> Trends</button>
+    </nav>
+
+    <!-- Main content -->
+    <main class="main" id="main"></main>
+  </div>
+
+  <!-- Bottom tab nav (mobile) -->
+  <nav class="tabnav" id="tabnav">
+    <button data-view="log"><span class="ic">🎯</span> Log</button>
+    <button data-view="lessons"><span class="ic">📘</span> Lessons</button>
+    <button data-view="prep"><span class="ic">📋</span> Prep</button>
+    <button data-view="trends"><span class="ic">📈</span> Trends</button>
+  </nav>
+</div>
+
+<script>
+/* ============================================================================
+   RangeLog
+   ----------------------------------------------------------------------------
+   Organization:
+     1. Constants
+     2. DATA LAYER  — loadData() / saveData() are the ONLY localStorage touch-
+                      points. Swap them for a network layer later.
+     3. State & helpers
+     4. RENDER functions (one per view) + shared UI (toast, modal)
+     5. EVENT WIRING / router
+   ============================================================================ */
+
+/* ---------- 1. Constants ---------- */
+const STORAGE_KEY = 'rangelog_v1';
+
+const CLUB_GROUPS = ['Driver', 'Woods/Hybrids', 'Long Irons', 'Mid Irons', 'Wedges'];
+const FLIGHTS = ['Straight', 'Pull', 'Push', 'Slice', 'Hook', 'Fat', 'Thin'];
+
+// Colors used for ball-flight distribution charts.
+const FLIGHT_COLORS = {
+  Straight: '#4ade5b',
+  Pull:     '#f5b53d',
+  Push:     '#5aa9ff',
+  Slice:    '#ef6b5c',
+  Hook:     '#c07bff',
+  Fat:      '#a67c52',
+  Thin:     '#8fd0c7'
+};
+
+/* ============================================================================
+   2. DATA LAYER — the ONLY place that talks to localStorage.
+   ============================================================================ */
+
+function freshData() {
+  return { lessons: [], sessions: [] };
+}
+
+/** Load the whole app state. Guards against malformed/absent storage. */
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return freshData();
+    const parsed = JSON.parse(raw);
+    // Basic shape validation — fall back to fresh state if corrupt.
+    if (!parsed || typeof parsed !== 'object') return freshData();
+    return {
+      lessons: Array.isArray(parsed.lessons) ? parsed.lessons : [],
+      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : []
+    };
+  } catch (e) {
+    console.warn('RangeLog: could not parse stored data, starting fresh.', e);
+    return freshData();
+  }
+}
+
+/** Persist the whole app state. */
+function saveData(data) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.error('RangeLog: failed to save data.', e);
+    toast('⚠️ Could not save (storage full?)');
+  }
+}
+
+/* ============================================================================
+   3. State & helpers
+   ============================================================================ */
+
+let DATA = loadData();          // in-memory mirror of storage
+let currentView = 'log';        // active view id
+
+// Transient form state for the Log view (not persisted until Save).
+let logDraft = null;
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function todayISO() {
+  const d = new Date();
+  const off = d.getTimezoneOffset();
+  return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function fmtDateShort(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function daysBetween(a, b) {
+  return Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+}
+
+/** Escape user text for safe HTML insertion. */
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/** The active lesson = most recent lesson by date (tie-break: newest id). */
+function activeLesson() {
+  if (!DATA.lessons.length) return null;
+  return DATA.lessons.slice().sort(sortByDateDesc)[0];
+}
+
+function sortByDateDesc(a, b) {
+  if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+  return (a.id < b.id) ? 1 : -1;
+}
+
+/** Sessions logged on/after the active lesson's date. */
+function sessionsSinceActiveLesson() {
+  const lesson = activeLesson();
+  if (!lesson) return [];
+  return DATA.sessions
+    .filter(s => s.date >= lesson.date)
+    .sort(sortByDateDesc);
+}
+
+/* ============================================================================
+   4. RENDER
+   ============================================================================ */
+
+const main = document.getElementById('main');
+
+function render() {
+  // Sync nav highlight
+  document.querySelectorAll('#tabnav button, #sidenav button').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === currentView);
+  });
+  if (currentView === 'log') renderLog();
+  else if (currentView === 'lessons') renderLessons();
+  else if (currentView === 'prep') renderPrep();
+  else if (currentView === 'trends') renderTrends();
+  window.scrollTo(0, 0);
+}
+
+/* ---------------------------------------------------------------------------
+   VIEW 1: LOG — fast range flow
+   --------------------------------------------------------------------------- */
+
+function newLogDraft() {
+  return {
+    date: todayISO(),
+    groups: {},           // group -> { open, contact, flight }
+    drillsDone: {},       // drillId -> bool
+    note: ''
+  };
+}
+
+function renderLog() {
+  if (!logDraft) logDraft = newLogDraft();
+  const lesson = activeLesson();
+
+  let html = `
+    <div class="view">
+      <div class="view-head">
+        <h2>Log Session</h2>
+        <div class="sub">Tap what you hit, save in seconds.</div>
+      </div>
+
+      <div class="card">
+        <label class="fld" style="margin:0">
+          <span>Date</span>
+          <input type="date" id="logDate" value="${esc(logDraft.date)}" max="${todayISO()}">
+        </label>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Club groups hit</div>
+        <div id="groupBlocks"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Homework drills</div>
+        <div id="hwBlock"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Note</div>
+        <input type="text" id="logNote" placeholder="Anything click today?" value="${esc(logDraft.note)}">
+      </div>
+
+      <div style="height:8px"></div>
+    </div>
+
+    <div class="savebar">
+      <button class="btn primary block" id="saveSession">💾 Save Session</button>
+    </div>
+  `;
+  main.innerHTML = html;
+
+  renderGroupBlocks();
+  renderHomeworkBlock(lesson);
+
+  // Wire date + note (kept in draft so redraws don't lose input)
+  document.getElementById('logDate').addEventListener('change', e => { logDraft.date = e.target.value; });
+  document.getElementById('logNote').addEventListener('input', e => { logDraft.note = e.target.value; });
+  document.getElementById('saveSession').addEventListener('click', saveSessionFromDraft);
+}
+
+function renderGroupBlocks() {
+  const wrap = document.getElementById('groupBlocks');
+  if (!wrap) return;
+  wrap.innerHTML = CLUB_GROUPS.map(g => {
+    const st = logDraft.groups[g];
+    const on = !!st;
+    let panel = '';
+    if (on) {
+      const dots = [1,2,3,4,5].map(n =>
+        `<button class="dot ${st.contact === n ? 'on' : ''}" data-grp="${esc(g)}" data-contact="${n}">${n}</button>`
+      ).join('');
+      const flights = FLIGHTS.map(f =>
+        `<button class="chip sm ${st.flight === f ? 'on' : ''}" data-grp="${esc(g)}" data-flight="${esc(f)}">${f}</button>`
+      ).join('');
+      panel = `
+        <div class="group-panel">
+          <div class="lbl">Contact quality (1 = mishit · 5 = flush)</div>
+          <div class="contact-dots">${dots}</div>
+          <div class="lbl">Ball flight tendency</div>
+          <div class="chip-row">${flights}</div>
+        </div>`;
+    }
+    return `
+      <div class="group-block">
+        <button class="chip ${on ? 'on' : ''}" style="width:100%; justify-content:space-between" data-grp-toggle="${esc(g)}">
+          <span>${g}</span><span>${on ? '✓' : '+'}</span>
+        </button>
+        ${panel}
+      </div>`;
+  }).join('');
+
+  // Toggle group open/closed
+  wrap.querySelectorAll('[data-grp-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const g = btn.dataset.grpToggle;
+      if (logDraft.groups[g]) delete logDraft.groups[g];
+      else logDraft.groups[g] = { contact: 0, flight: '' };
+      renderGroupBlocks();
+    });
+  });
+  // Contact dots
+  wrap.querySelectorAll('[data-contact]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const g = btn.dataset.grp;
+      logDraft.groups[g].contact = Number(btn.dataset.contact);
+      renderGroupBlocks();
+    });
+  });
+  // Flight chips (single-select, toggle off if same)
+  wrap.querySelectorAll('[data-flight]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const g = btn.dataset.grp, f = btn.dataset.flight;
+      logDraft.groups[g].flight = (logDraft.groups[g].flight === f) ? '' : f;
+      renderGroupBlocks();
+    });
+  });
+}
+
+function renderHomeworkBlock(lesson) {
+  const wrap = document.getElementById('hwBlock');
+  if (!wrap) return;
+
+  if (!lesson) {
+    wrap.innerHTML = `
+      <p class="muted">No lesson yet — add one to start tracking homework.
+      <button class="link" data-goto="lessons">Go to Lessons →</button></p>`;
+    wrap.querySelector('[data-goto]').addEventListener('click', () => switchView('lessons'));
+    return;
+  }
+  if (!lesson.drills.length) {
+    wrap.innerHTML = `<p class="muted">Your latest lesson has no drills. Add drills on the Lessons tab.</p>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <p class="muted" style="margin-bottom:10px">From your ${fmtDateShort(lesson.date)} lesson — did you work on this?</p>
+    ${lesson.drills.map(d => {
+      const on = !!logDraft.drillsDone[d.id];
+      return `
+        <div class="hw-item ${on ? 'on' : ''}" data-drill="${esc(d.id)}">
+          <div class="hw-box">${on ? '✓' : ''}</div>
+          <div class="hw-name">${esc(d.name)}</div>
+        </div>`;
+    }).join('')}
+  `;
+  wrap.querySelectorAll('[data-drill]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.drill;
+      logDraft.drillsDone[id] = !logDraft.drillsDone[id];
+      renderHomeworkBlock(lesson);
+    });
+  });
+}
+
+function saveSessionFromDraft() {
+  const groupKeys = Object.keys(logDraft.groups);
+  if (!groupKeys.length) {
+    toast('⛳ Tap at least one club group first');
+    return;
+  }
+  const clubGroups = groupKeys.map(g => ({
+    group: g,
+    contact: logDraft.groups[g].contact || 0,
+    flight: logDraft.groups[g].flight || ''
+  }));
+  const drillsDone = Object.keys(logDraft.drillsDone).filter(id => logDraft.drillsDone[id]);
+
+  DATA.sessions.push({
+    id: uid(),
+    date: logDraft.date || todayISO(),
+    clubGroups,
+    drillsDone,
+    note: (logDraft.note || '').trim()
+  });
+  saveData(DATA);
+
+  logDraft = newLogDraft();
+  renderLog();
+  toast('✅ Session saved');
+}
+
+/* ---------------------------------------------------------------------------
+   VIEW 2: LESSONS
+   --------------------------------------------------------------------------- */
+
+function renderLessons() {
+  const active = activeLesson();
+  const lessons = DATA.lessons.slice().sort(sortByDateDesc);
+
+  let list;
+  if (!lessons.length) {
+    list = emptyState('📘', 'No lessons yet',
+      'Add your first lesson to capture what your coach worked on and the drills to practice.');
+  } else {
+    list = lessons.map(l => {
+      const isActive = active && l.id === active.id;
+      const drills = l.drills.length
+        ? l.drills.map(d => `<span class="drill-tag">${esc(d.name)}</span>`).join('')
+        : '<span class="meta">No drills</span>';
+      return `
+        <div class="row-item ${isActive ? 'active-lesson' : ''}">
+          <div class="grow">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+              <strong>${fmtDate(l.date)}</strong>
+              ${isActive ? '<span class="pill">Active homework</span>' : ''}
+            </div>
+            ${l.focus ? `<div class="mt8"><span class="meta">Focus:</span> ${esc(l.focus)}</div>` : ''}
+            ${l.swingThought ? `<div class="mt8">💭 <em>${esc(l.swingThought)}</em></div>` : ''}
+            <div class="mt8">${drills}</div>
+            <div class="mt12" style="display:flex; gap:8px">
+              <button class="btn sm ghost" data-edit="${esc(l.id)}">Edit</button>
+              <button class="btn sm danger" data-del="${esc(l.id)}">Delete</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  main.innerHTML = `
+    <div class="view">
+      <div class="view-head">
+        <h2>Lessons</h2>
+        <div class="sub">Your most recent lesson sets the current homework.</div>
+      </div>
+      <button class="btn primary block mt8" id="addLesson">＋ Add Lesson</button>
+      <div class="mt16">${list}</div>
+    </div>`;
+
+  document.getElementById('addLesson').addEventListener('click', () => openLessonForm());
+  main.querySelectorAll('[data-edit]').forEach(b =>
+    b.addEventListener('click', () => openLessonForm(b.dataset.edit)));
+  main.querySelectorAll('[data-del]').forEach(b =>
+    b.addEventListener('click', () => deleteLesson(b.dataset.del)));
+}
+
+function openLessonForm(id) {
+  const editing = id ? DATA.lessons.find(l => l.id === id) : null;
+  const drills = editing ? editing.drills.map(d => ({ ...d })) : [{ id: uid(), name: '' }];
+
+  const body = `
+    <label class="fld">
+      <span>Date</span>
+      <input type="date" id="fDate" value="${esc(editing ? editing.date : todayISO())}" max="${todayISO()}">
+    </label>
+    <label class="fld">
+      <span>Focus — what did your coach work on?</span>
+      <input type="text" id="fFocus" placeholder="e.g. Weight shift, grip pressure" value="${esc(editing ? editing.focus : '')}">
+    </label>
+    <label class="fld">
+      <span>Swing thought — the key feel/cue</span>
+      <input type="text" id="fThought" placeholder="e.g. Turn, don't slide" value="${esc(editing ? editing.swingThought : '')}">
+    </label>
+    <div class="section-label">Homework drills (1–3)</div>
+    <div id="drillRows"></div>
+    <button class="btn sm ghost" id="addDrill">＋ Add drill</button>
+  `;
+
+  openModal(editing ? 'Edit Lesson' : 'Add Lesson', body, [
+    { label: 'Cancel', cls: 'ghost', onClick: closeModal },
+    { label: editing ? 'Save Changes' : 'Save Lesson', cls: 'primary', onClick: () => submitLesson(editing, drills) }
+  ]);
+
+  // Render drill rows (managed in closure `drills`)
+  function drawDrills() {
+    const box = document.getElementById('drillRows');
+    box.innerHTML = drills.map((d, i) => `
+      <div class="drill-row">
+        <input type="text" placeholder="Drill ${i + 1} name" data-di="${i}" value="${esc(d.name)}">
+        ${drills.length > 1 ? `<button class="rm" data-rm="${i}">×</button>` : ''}
+      </div>`).join('');
+    box.querySelectorAll('[data-di]').forEach(inp =>
+      inp.addEventListener('input', e => { drills[Number(e.target.dataset.di)].name = e.target.value; }));
+    box.querySelectorAll('[data-rm]').forEach(btn =>
+      btn.addEventListener('click', () => { drills.splice(Number(btn.dataset.rm), 1); drawDrills(); }));
+    document.getElementById('addDrill').classList.toggle('hidden', drills.length >= 3);
+  }
+  drawDrills();
+  document.getElementById('addDrill').addEventListener('click', () => {
+    if (drills.length < 3) { drills.push({ id: uid(), name: '' }); drawDrills(); }
+  });
+}
+
+function submitLesson(editing, drills) {
+  const date = document.getElementById('fDate').value || todayISO();
+  const focus = document.getElementById('fFocus').value.trim();
+  const swingThought = document.getElementById('fThought').value.trim();
+  const cleanDrills = drills
+    .map(d => ({ id: d.id, name: d.name.trim() }))
+    .filter(d => d.name.length);
+
+  if (!focus && !swingThought && !cleanDrills.length) {
+    toast('Add a focus, swing thought, or at least one drill');
+    return;
+  }
+
+  if (editing) {
+    editing.date = date;
+    editing.focus = focus;
+    editing.swingThought = swingThought;
+    editing.drills = cleanDrills;
+  } else {
+    DATA.lessons.push({ id: uid(), date, focus, swingThought, drills: cleanDrills });
+  }
+  saveData(DATA);
+  closeModal();
+  renderLessons();
+  toast(editing ? '✅ Lesson updated' : '✅ Lesson added');
+}
+
+function deleteLesson(id) {
+  const lesson = DATA.lessons.find(l => l.id === id);
+  if (!lesson) return;
+  confirmModal('Delete this lesson?',
+    `The ${fmtDate(lesson.date)} lesson and its drills will be removed. Logged sessions stay, but references to its drills are dropped.`,
+    () => {
+      DATA.lessons = DATA.lessons.filter(l => l.id !== id);
+      saveData(DATA);
+      closeModal();
+      renderLessons();
+      toast('🗑️ Lesson deleted');
+    });
+}
+
+/* ---------------------------------------------------------------------------
+   VIEW 3: PREP — "show your coach"
+   --------------------------------------------------------------------------- */
+
+function renderPrep() {
+  const lesson = activeLesson();
+
+  if (!lesson) {
+    main.innerHTML = `
+      <div class="view">
+        <div class="view-head"><h2>Prep</h2><div class="sub">A summary to show your coach.</div></div>
+        ${emptyState('📋', 'No active lesson', 'Add a lesson first — Prep summarizes every range session since your latest lesson.')}
+      </div>`;
+    return;
+  }
+
+  const sessions = sessionsSinceActiveLesson();
+
+  // --- Homework completion per drill ---
+  const hwRows = lesson.drills.map(d => {
+    const count = sessions.filter(s => (s.drillsDone || []).includes(d.id)).length;
+    const pct = sessions.length ? Math.round(count / sessions.length * 100) : 0;
+    return `
+      <div style="margin-bottom:12px">
+        <div class="kv" style="border:none; padding:0 0 2px">
+          <span class="k">${esc(d.name)}</span>
+          <span class="v">${count}/${sessions.length} sessions</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+      </div>`;
+  }).join('') || '<p class="muted">This lesson has no drills.</p>';
+
+  // --- Contact averages ---
+  const allContacts = [];
+  const byGroupContacts = {};
+  const byGroupFlights = {};
+  sessions.forEach(s => {
+    (s.clubGroups || []).forEach(cg => {
+      if (cg.contact > 0) {
+        allContacts.push(cg.contact);
+        (byGroupContacts[cg.group] = byGroupContacts[cg.group] || []).push(cg.contact);
+      }
+      if (cg.flight) {
+        byGroupFlights[cg.group] = byGroupFlights[cg.group] || {};
+        byGroupFlights[cg.group][cg.flight] = (byGroupFlights[cg.group][cg.flight] || 0) + 1;
+      }
+    });
+  });
+  const avg = arr => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+  const overallAvg = avg(allContacts);
+
+  const contactRows = CLUB_GROUPS.filter(g => byGroupContacts[g]).map(g => {
+    const a = avg(byGroupContacts[g]);
+    return `<div class="kv"><span class="k">${g}</span><span class="v">${a.toFixed(1)} <span style="color:var(--text-faint);font-weight:400">/5</span></span></div>`;
+  }).join('') || '<p class="muted">No contact ratings logged yet.</p>';
+
+  // --- Most common miss per group ---
+  const missRows = CLUB_GROUPS.filter(g => byGroupFlights[g]).map(g => {
+    const counts = byGroupFlights[g];
+    let best = null, bestN = 0;
+    Object.keys(counts).forEach(f => { if (counts[f] > bestN) { bestN = counts[f]; best = f; } });
+    const isMiss = best !== 'Straight';
+    return `<div class="kv"><span class="k">${g}</span>
+      <span class="v ${isMiss ? '' : 'grey'}" style="${isMiss ? 'color:var(--amber)' : ''}">${best} ×${bestN}</span></div>`;
+  }).join('') || '<p class="muted">No ball-flight data logged yet.</p>';
+
+  // --- Notes ---
+  const notes = sessions.filter(s => s.note).map(s =>
+    `<div class="note-line"><div class="d">${fmtDateShort(s.date)}</div>${esc(s.note)}</div>`
+  ).join('') || '<p class="muted">No session notes recorded.</p>';
+
+  const span = daysBetween(lesson.date, todayISO());
+
+  main.innerHTML = `
+    <div class="view">
+      <div class="view-head">
+        <h2>Prep</h2>
+        <div class="sub">Since your ${fmtDate(lesson.date)} lesson${span >= 0 ? ` · ${span} day${span === 1 ? '' : 's'} ago` : ''}</div>
+      </div>
+
+      <div class="card raised">
+        <div class="section-label">Since last lesson</div>
+        ${lesson.focus ? `<p style="margin-bottom:6px"><span class="meta">Focus:</span> ${esc(lesson.focus)}</p>` : ''}
+        ${lesson.swingThought ? `<p style="margin-bottom:12px">💭 <em>${esc(lesson.swingThought)}</em></p>` : ''}
+        <div class="stat-grid">
+          <div class="stat"><div class="num">${sessions.length}</div><div class="lbl">Range sessions</div></div>
+          <div class="stat"><div class="num">${overallAvg ? overallAvg.toFixed(1) : '–'}</div><div class="lbl">Avg contact /5</div></div>
+          <div class="stat"><div class="num">${lesson.drills.length}</div><div class="lbl">Homework drills</div></div>
+          <div class="stat"><div class="num">${notes === '' ? 0 : sessions.filter(s=>s.note).length}</div><div class="lbl">Notes logged</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Homework completion</div>
+        ${hwRows}
+      </div>
+
+      <div class="card">
+        <div class="section-label">Average contact by club group</div>
+        ${contactRows}
+      </div>
+
+      <div class="card">
+        <div class="section-label">Most common ball flight by group</div>
+        ${missRows}
+      </div>
+
+      <div class="card">
+        <div class="section-label">Session notes</div>
+        ${notes}
+      </div>
+    </div>`;
+}
+
+/* ---------------------------------------------------------------------------
+   VIEW 4: TRENDS — charts (inline SVG, no libraries)
+   --------------------------------------------------------------------------- */
+
+let trendGroupFilter = 'All';
+
+function renderTrends() {
+  const sessions = DATA.sessions.slice().sort((a, b) => a.date < b.date ? -1 : 1);
+
+  if (!sessions.length) {
+    main.innerHTML = `
+      <div class="view">
+        <div class="view-head"><h2>Trends</h2><div class="sub">Your progress over time.</div></div>
+        ${emptyState('📈', 'No sessions yet', 'Log a few range sessions and your trends will show up here.')}
+      </div>`;
+    return;
+  }
+
+  main.innerHTML = `
+    <div class="view">
+      <div class="view-head"><h2>Trends</h2><div class="sub">Across all ${sessions.length} logged session${sessions.length===1?'':'s'}.</div></div>
+
+      <div class="card">
+        <div class="section-label">Sessions per week (last 8 weeks)</div>
+        <div class="chart-wrap" id="chartWeeks"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Contact quality over time</div>
+        <div class="chip-row" id="trendFilter" style="margin-bottom:12px"></div>
+        <div class="chart-wrap" id="chartContact"></div>
+        <p class="muted mt8">Amber lines mark lessons.</p>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Ball flight distribution by group</div>
+        <div id="chartFlights"></div>
+      </div>
+    </div>`;
+
+  drawWeeksChart(sessions);
+  drawContactFilter();
+  drawContactChart(sessions);
+  drawFlightChart(sessions);
+}
+
+function drawContactFilter() {
+  const wrap = document.getElementById('trendFilter');
+  const opts = ['All', ...CLUB_GROUPS];
+  wrap.innerHTML = opts.map(g =>
+    `<button class="chip sm ${trendGroupFilter === g ? 'on' : ''}" data-f="${esc(g)}">${g}</button>`
+  ).join('');
+  wrap.querySelectorAll('[data-f]').forEach(b =>
+    b.addEventListener('click', () => {
+      trendGroupFilter = b.dataset.f;
+      drawContactFilter();
+      drawContactChart(DATA.sessions.slice().sort((a,c) => a.date < c.date ? -1 : 1));
+    }));
+}
+
+/** Bar chart: sessions per week over the last 8 weeks. */
+function drawWeeksChart(sessions) {
+  const weeks = 8;
+  const now = new Date(todayISO());
+  // Build 8 week buckets ending this week (week = 7-day window).
+  const buckets = [];
+  for (let i = weeks - 1; i >= 0; i--) {
+    const end = new Date(now); end.setDate(now.getDate() - i * 7);
+    const start = new Date(end); start.setDate(end.getDate() - 6);
+    buckets.push({ start, end, count: 0, label: `${end.getMonth()+1}/${end.getDate()}` });
+  }
+  const earliest = buckets[0].start;
+  sessions.forEach(s => {
+    const d = new Date(s.date);
+    if (d < earliest) return;
+    for (const b of buckets) { if (d >= b.start && d <= b.end) { b.count++; break; } }
+  });
+
+  const W = 640, H = 200, padL = 28, padB = 28, padT = 12, padR = 10;
+  const maxV = Math.max(3, ...buckets.map(b => b.count));
+  const cw = (W - padL - padR) / weeks;
+  const bw = cw * 0.6;
+  const chartH = H - padB - padT;
+
+  let bars = '', labels = '';
+  buckets.forEach((b, i) => {
+    const x = padL + i * cw + (cw - bw) / 2;
+    const h = maxV ? (b.count / maxV) * chartH : 0;
+    const y = padT + chartH - h;
+    bars += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="4" fill="url(#gGreen)"></rect>`;
+    if (b.count > 0) bars += `<text x="${x + bw/2}" y="${y - 5}" fill="#f4f8f5" font-size="11" text-anchor="middle" font-weight="700">${b.count}</text>`;
+    labels += `<text x="${x + bw/2}" y="${H - 9}" fill="#6f8778" font-size="10" text-anchor="middle">${b.label}</text>`;
+  });
+  // y gridlines
+  let grid = '';
+  for (let v = 0; v <= maxV; v++) {
+    const y = padT + chartH - (v / maxV) * chartH;
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#274233" stroke-width="1"></line>`;
+    grid += `<text x="${padL-6}" y="${y+3}" fill="#6f8778" font-size="9" text-anchor="end">${v}</text>`;
+  }
+
+  document.getElementById('chartWeeks').innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sessions per week">
+      <defs><linearGradient id="gGreen" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#4ade5b"></stop><stop offset="1" stop-color="#2f9c3d"></stop>
+      </linearGradient></defs>
+      ${grid}${bars}${labels}
+    </svg>`;
+}
+
+/** Line chart: contact quality over time, with lesson markers. */
+function drawContactChart(sessions) {
+  const el = document.getElementById('chartContact');
+  if (!el) return;
+
+  // Build (date, avgContact) points filtered by group.
+  const pts = [];
+  sessions.forEach(s => {
+    let vals = (s.clubGroups || []).filter(cg => cg.contact > 0);
+    if (trendGroupFilter !== 'All') vals = vals.filter(cg => cg.group === trendGroupFilter);
+    if (!vals.length) return;
+    const a = vals.reduce((acc, cg) => acc + cg.contact, 0) / vals.length;
+    pts.push({ t: Date.parse(s.date), v: a, date: s.date });
+  });
+
+  if (pts.length === 0) {
+    el.innerHTML = `<p class="muted" style="padding:20px 0">No contact data for ${esc(trendGroupFilter)}.</p>`;
+    return;
+  }
+
+  const W = 640, H = 220, padL = 30, padR = 14, padT = 14, padB = 30;
+  const chartW = W - padL - padR, chartH = H - padT - padB;
+
+  const times = pts.map(p => p.t);
+  let minT = Math.min(...times), maxT = Math.max(...times);
+  if (minT === maxT) { minT -= 86400000; maxT += 86400000; } // pad single point
+  const xOf = t => padL + ((t - minT) / (maxT - minT)) * chartW;
+  const yOf = v => padT + chartH - ((v - 1) / 4) * chartH;   // scale 1..5
+
+  // gridlines for contact 1..5
+  let grid = '';
+  for (let v = 1; v <= 5; v++) {
+    const y = yOf(v);
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#274233"></line>`;
+    grid += `<text x="${padL-6}" y="${y+3}" fill="#6f8778" font-size="9" text-anchor="end">${v}</text>`;
+  }
+
+  // lesson markers (within time range)
+  let markers = '';
+  DATA.lessons.forEach(l => {
+    const t = Date.parse(l.date);
+    if (t < minT || t > maxT) return;
+    const x = xOf(t);
+    markers += `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT+chartH}" stroke="#f5b53d" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.8"></line>`;
+    markers += `<circle cx="${x}" cy="${padT}" r="3" fill="#f5b53d"></circle>`;
+  });
+
+  // line + points
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${xOf(p.t).toFixed(1)} ${yOf(p.v).toFixed(1)}`).join(' ');
+  const dots = pts.map(p =>
+    `<circle cx="${xOf(p.t).toFixed(1)}" cy="${yOf(p.v).toFixed(1)}" r="4" fill="#4ade5b" stroke="#0c1611" stroke-width="1.5"></circle>`
+  ).join('');
+  // area under line
+  const area = `${line} L${xOf(pts[pts.length-1].t).toFixed(1)} ${padT+chartH} L${xOf(pts[0].t).toFixed(1)} ${padT+chartH} Z`;
+
+  // x labels (first & last)
+  const xlabels = `
+    <text x="${xOf(pts[0].t)}" y="${H-9}" fill="#6f8778" font-size="10" text-anchor="start">${fmtDateShort(pts[0].date)}</text>
+    <text x="${xOf(pts[pts.length-1].t)}" y="${H-9}" fill="#6f8778" font-size="10" text-anchor="end">${fmtDateShort(pts[pts.length-1].date)}</text>`;
+
+  el.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Contact quality over time">
+      <defs><linearGradient id="gArea" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#4ade5b" stop-opacity="0.35"></stop>
+        <stop offset="1" stop-color="#4ade5b" stop-opacity="0"></stop>
+      </linearGradient></defs>
+      ${grid}${markers}
+      <path d="${area}" fill="url(#gArea)"></path>
+      <path d="${line}" fill="none" stroke="#4ade5b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></path>
+      ${dots}${xlabels}
+    </svg>`;
+}
+
+/** Horizontal stacked bars: ball-flight distribution per club group. */
+function drawFlightChart(sessions) {
+  const el = document.getElementById('chartFlights');
+
+  // group -> flight -> count
+  const data = {};
+  sessions.forEach(s => (s.clubGroups || []).forEach(cg => {
+    if (!cg.flight) return;
+    data[cg.group] = data[cg.group] || {};
+    data[cg.group][cg.flight] = (data[cg.group][cg.flight] || 0) + 1;
+  }));
+
+  const groups = CLUB_GROUPS.filter(g => data[g]);
+  if (!groups.length) {
+    el.innerHTML = `<p class="muted">No ball-flight data logged yet.</p>`;
+    return;
+  }
+
+  const rowH = 30, gap = 16, labelW = 96, barW = 420, padR = 12;
+  const W = labelW + barW + padR;
+  const H = groups.length * (rowH + gap);
+
+  let rows = '';
+  groups.forEach((g, i) => {
+    const counts = data[g];
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    const y = i * (rowH + gap);
+    let x = labelW;
+    let segs = '';
+    FLIGHTS.forEach(f => {
+      const c = counts[f]; if (!c) return;
+      const w = (c / total) * barW;
+      segs += `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${rowH}" fill="${FLIGHT_COLORS[f]}">
+        <title>${g} — ${f}: ${c}</title></rect>`;
+      if (w > 24) segs += `<text x="${(x + w/2).toFixed(1)}" y="${y + rowH/2 + 4}" fill="#04140a" font-size="11" font-weight="700" text-anchor="middle">${c}</text>`;
+      x += w;
+    });
+    rows += `
+      <text x="0" y="${y + rowH/2 + 4}" fill="#f4f8f5" font-size="12" font-weight="600">${g}</text>
+      ${segs}`;
+  });
+
+  const legend = FLIGHTS.map(f =>
+    `<span><span class="sw" style="background:${FLIGHT_COLORS[f]}"></span>${f}</span>`
+  ).join('');
+
+  el.innerHTML = `
+    <div class="chart-wrap">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMid meet" role="img" aria-label="Ball flight distribution">${rows}</svg>
+    </div>
+    <div class="legend">${legend}</div>`;
+}
+
+/* ---------------------------------------------------------------------------
+   Shared UI: empty state, toast, modal
+   --------------------------------------------------------------------------- */
+
+function emptyState(icon, title, msg, ctaLabel, ctaView) {
+  const cta = ctaLabel ? `<button class="btn primary" data-empty-cta>${ctaLabel}</button>` : '';
+  return `<div class="empty"><div class="big">${icon}</div><h3>${title}</h3><p>${msg}</p>${cta}</div>`;
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const old = document.querySelector('.toast');
+  if (old) old.remove();
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.remove(), 1900);
+}
+
+function openModal(title, bodyHTML, actions) {
+  closeModal();
+  const back = document.createElement('div');
+  back.className = 'modal-back';
+  back.id = 'modalBack';
+  back.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h3>${esc(title)}</h3>
+        <button class="icon-btn" id="modalClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">${bodyHTML}</div>
+      <div class="modal-actions" id="modalActions"></div>
+    </div>`;
+  document.body.appendChild(back);
+
+  const actWrap = back.querySelector('#modalActions');
+  (actions || []).forEach(a => {
+    const btn = document.createElement('button');
+    btn.className = 'btn ' + (a.cls || '');
+    btn.textContent = a.label;
+    btn.addEventListener('click', a.onClick);
+    actWrap.appendChild(btn);
+  });
+
+  back.querySelector('#modalClose').addEventListener('click', closeModal);
+  back.addEventListener('click', e => { if (e.target === back) closeModal(); });
+}
+
+function closeModal() {
+  const b = document.getElementById('modalBack');
+  if (b) b.remove();
+}
+
+function confirmModal(title, msg, onConfirm) {
+  openModal(title, `<p class="muted">${esc(msg)}</p>`, [
+    { label: 'Cancel', cls: 'ghost', onClick: closeModal },
+    { label: 'Delete', cls: 'danger', onClick: onConfirm }
+  ]);
+}
+
+/* ============================================================================
+   5. EVENT WIRING / router
+   ============================================================================ */
+
+function switchView(view) {
+  currentView = view;
+  if (view === 'log' && !logDraft) logDraft = newLogDraft();
+  render();
+}
+
+// Nav buttons (mobile tabs + desktop sidebar)
+document.querySelectorAll('#tabnav button, #sidenav button').forEach(btn => {
+  btn.addEventListener('click', () => switchView(btn.dataset.view));
+});
+
+// --- Export ---
+document.getElementById('btnExport').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(DATA, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rangelog-${todayISO()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('⬇ Data exported');
+});
+
+// --- Import ---
+const importFile = document.getElementById('importFile');
+document.getElementById('btnImport').addEventListener('click', () => importFile.click());
+importFile.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const parsed = JSON.parse(ev.target.result);
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.lessons) || !Array.isArray(parsed.sessions)) {
+        throw new Error('bad shape');
+      }
+      confirmImport(parsed);
+    } catch (err) {
+      toast('⚠️ Invalid RangeLog file');
+    }
+    importFile.value = '';
+  };
+  reader.readAsText(file);
+});
+
+function confirmImport(parsed) {
+  openModal('Import data',
+    `<p class="muted">This will <strong>replace</strong> your current data with the imported file:</p>
+     <div class="stat-grid mt12">
+       <div class="stat"><div class="num">${parsed.lessons.length}</div><div class="lbl">Lessons</div></div>
+       <div class="stat"><div class="num">${parsed.sessions.length}</div><div class="lbl">Sessions</div></div>
+     </div>`,
+    [
+      { label: 'Cancel', cls: 'ghost', onClick: closeModal },
+      { label: 'Replace data', cls: 'primary', onClick: () => {
+        DATA = { lessons: parsed.lessons, sessions: parsed.sessions };
+        saveData(DATA);
+        closeModal();
+        render();
+        toast('⬆ Data imported');
+      } }
+    ]);
+}
+
+// Close modal on Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+/* ---------- Boot ---------- */
+switchView('log');
+</script>
+</body>
+</html>
