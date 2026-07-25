@@ -181,6 +181,24 @@
   textarea { resize: vertical; min-height: 60px; }
   ::placeholder { color: var(--text-faint); }
 
+  /* Date input — normalize iOS Safari, which otherwise centers the value
+     and hides the picker affordance. Left-align to match other fields. */
+  input[type=date] {
+    -webkit-appearance: none;
+    appearance: none;
+    text-align: left;
+    display: flex;               /* keeps the value vertically centered on iOS */
+    align-items: center;
+    line-height: 1.2;
+  }
+  input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+  input[type=date]::-webkit-calendar-picker-indicator {
+    margin-left: auto;           /* push the picker icon to the right edge */
+    filter: invert(0.85);        /* light icon on the dark field */
+    opacity: 0.75;
+    cursor: pointer;
+  }
+
   /* ---------- Club group mini panel ---------- */
   .group-block { margin-bottom: 10px; }
   .group-panel {
