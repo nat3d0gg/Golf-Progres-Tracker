@@ -298,6 +298,14 @@
   .note-line { padding: 10px 12px; background: var(--bg-2); border-radius: var(--radius-sm); margin-bottom: 8px; border: 1px solid var(--border); }
   .note-line .d { font-size: 0.72rem; color: var(--text-faint); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 
+  /* ---------- Terms / glossary ---------- */
+  .term-row { padding: 11px 0; border-bottom: 1px solid var(--border); }
+  .term-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .term-row:first-of-type { padding-top: 2px; }
+  .term-head { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+  .term-name { font-weight: 700; font-size: 1.02rem; color: var(--text); }
+  .term-def { color: var(--text-dim); font-size: 0.9rem; line-height: 1.5; }
+
   /* ---------- Charts ---------- */
   .chart-wrap { width: 100%; overflow-x: auto; }
   svg { display: block; width: 100%; height: auto; }
@@ -410,6 +418,7 @@
       <button data-view="lessons"><span class="ic">📘</span> Lessons</button>
       <button data-view="prep"><span class="ic">📋</span> Prep</button>
       <button data-view="trends"><span class="ic">📈</span> Trends</button>
+      <button data-view="terms"><span class="ic">📖</span> Terms</button>
     </nav>
 
     <!-- Main content -->
@@ -422,6 +431,7 @@
     <button data-view="lessons"><span class="ic">📘</span> Lessons</button>
     <button data-view="prep"><span class="ic">📋</span> Prep</button>
     <button data-view="trends"><span class="ic">📈</span> Trends</button>
+    <button data-view="terms"><span class="ic">📖</span> Terms</button>
   </nav>
 </div>
 
@@ -455,12 +465,70 @@ const FLIGHT_COLORS = {
   Thin:     '#8fd0c7'
 };
 
+// ---- Terms dictionary (beginner-friendly glossary) ----
+// Grouped by category; rendered in the Terms view with a search filter.
+const TERMS = [
+  // Ball flight & misses
+  { term: 'Straight',   cat: 'Ball Flight', def: 'The ball starts on target and holds its line. The goal on every swing.' },
+  { term: 'Pull',       cat: 'Ball Flight', def: 'Starts left of target and stays left (for a right-hander). Often an over-the-top path or a closed clubface.' },
+  { term: 'Push',       cat: 'Ball Flight', def: 'Starts right of target and stays right. Usually an in-to-out path with the face square to that path.' },
+  { term: 'Slice',      cat: 'Ball Flight', def: 'Starts left-ish then curves hard right — the most common beginner miss. Caused by an open clubface relative to the swing path.' },
+  { term: 'Hook',       cat: 'Ball Flight', def: 'Curves sharply left. Caused by a clubface closed relative to the swing path.' },
+  { term: 'Fade',       cat: 'Ball Flight', def: 'A small, controlled left-to-right curve (for a right-hander) — the tamed, playable version of a slice.' },
+  { term: 'Draw',       cat: 'Ball Flight', def: 'A small, controlled right-to-left curve — the tamed, playable version of a hook.' },
+  // Contact & strike
+  { term: 'Fat',        cat: 'Contact',     def: 'The club hits the ground before the ball (also "chunk" or "heavy"). Steals distance and height.' },
+  { term: 'Thin',       cat: 'Contact',     def: 'The club catches the top half of the ball (also "skulled" or "bladed"). Produces a low, hot shot.' },
+  { term: 'Flush',      cat: 'Contact',     def: 'A perfectly struck shot from the center of the face — what a 5/5 contact rating feels like.' },
+  { term: 'Shank',      cat: 'Contact',     def: 'Struck off the hosel (where shaft meets head), firing sharply right. Common when standing too close.' },
+  { term: 'Toe / Heel', cat: 'Contact',     def: 'Contact toward the outer tip (toe) or inner end (heel) of the clubface instead of the center.' },
+  { term: 'Contact quality', cat: 'Contact', def: 'How centered and clean your strike is. In RangeLog you rate it 1 (mishit) to 5 (flush) per club group.' },
+  { term: 'Divot',      cat: 'Contact',     def: 'The strip of turf taken after impact with an iron. A divot that starts after the ball means clean ball-first contact.' },
+  // Setup & swing
+  { term: 'Swing thought', cat: 'Swing',    def: 'A single simple cue or feel you focus on during the swing (e.g. "turn, don\'t slide"). Your coach gives you one per lesson.' },
+  { term: 'Tempo',      cat: 'Swing',       def: 'The rhythm and timing of your swing — roughly a 3-to-1 ratio of backswing to downswing.' },
+  { term: 'Weight shift', cat: 'Swing',     def: 'Moving your pressure from the trail foot to the lead foot through the downswing for power and clean contact.' },
+  { term: 'Alignment',  cat: 'Swing',       def: 'How your feet, hips, and shoulders point relative to the target line. Alignment sticks are a common drill aid.' },
+  { term: 'Grip pressure', cat: 'Swing',    def: 'How tightly you hold the club. Lighter pressure often frees up the swing and improves feel.' },
+  { term: 'Takeaway',   cat: 'Swing',       def: 'The very first move of the club away from the ball at the start of the backswing.' },
+  { term: 'Follow-through', cat: 'Swing',   def: 'The finish of the swing after impact — a balanced follow-through is a sign of good sequencing.' },
+  // Clubs
+  { term: 'Driver',     cat: 'Clubs',       def: 'The longest club with the lowest loft, built for maximum distance off the tee.' },
+  { term: 'Woods / Hybrids', cat: 'Clubs',  def: 'Fairway woods and hybrids for long shots off the ground. Hybrids are more forgiving than long irons.' },
+  { term: 'Long Irons', cat: 'Clubs',       def: 'The 3–5 irons. Lower loft and harder to hit; many beginners replace these with hybrids.' },
+  { term: 'Mid Irons',  cat: 'Clubs',       def: 'The 6–8 irons — the workhorse clubs for approach shots into the green.' },
+  { term: 'Wedges',     cat: 'Clubs',       def: 'The highest-loft clubs (pitching, gap, sand, lob) for short approaches, chips, and bunker shots.' }
+];
+const TERM_CATS = ['Ball Flight', 'Contact', 'Swing', 'Clubs'];
+
 /* ============================================================================
    2. DATA LAYER — the ONLY place that talks to localStorage.
    ============================================================================ */
 
 function freshData() {
   return { lessons: [], sessions: [] };
+}
+
+/**
+ * Normalize/migrate a raw data object into the current schema.
+ * Migration: club groups used to store a single `flight` string; they now
+ * store a `flights` array (multi-select). Old records are upgraded on read.
+ */
+function normalizeData(parsed) {
+  if (!parsed || typeof parsed !== 'object') return freshData();
+  const lessons = Array.isArray(parsed.lessons) ? parsed.lessons : [];
+  const sessions = (Array.isArray(parsed.sessions) ? parsed.sessions : []).map(s => ({
+    ...s,
+    clubGroups: (Array.isArray(s.clubGroups) ? s.clubGroups : []).map(cg => {
+      let flights;
+      if (Array.isArray(cg.flights)) flights = cg.flights.filter(Boolean);
+      else if (cg.flight) flights = [cg.flight];   // legacy single value
+      else flights = [];
+      const out = { group: cg.group, contact: cg.contact || 0, flights };
+      return out;
+    })
+  }));
+  return { lessons, sessions };
 }
 
 /** Load the whole app state. Guards against malformed/absent storage. */
@@ -471,10 +539,7 @@ function loadData() {
     const parsed = JSON.parse(raw);
     // Basic shape validation — fall back to fresh state if corrupt.
     if (!parsed || typeof parsed !== 'object') return freshData();
-    return {
-      lessons: Array.isArray(parsed.lessons) ? parsed.lessons : [],
-      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : []
-    };
+    return normalizeData(parsed);
   } catch (e) {
     console.warn('RangeLog: could not parse stored data, starting fresh.', e);
     return freshData();
@@ -547,6 +612,13 @@ function sortByDateDesc(a, b) {
   return (a.id < b.id) ? 1 : -1;
 }
 
+/** Ball-flight tendencies for a club group, tolerant of legacy `flight`. */
+function flightsOf(cg) {
+  if (Array.isArray(cg.flights)) return cg.flights.filter(Boolean);
+  if (cg.flight) return [cg.flight];
+  return [];
+}
+
 /** Sessions logged on/after the active lesson's date. */
 function sessionsSinceActiveLesson() {
   const lesson = activeLesson();
@@ -571,6 +643,7 @@ function render() {
   else if (currentView === 'lessons') renderLessons();
   else if (currentView === 'prep') renderPrep();
   else if (currentView === 'trends') renderTrends();
+  else if (currentView === 'terms') renderTerms();
   window.scrollTo(0, 0);
 }
 
@@ -649,14 +722,15 @@ function renderGroupBlocks() {
       const dots = [1,2,3,4,5].map(n =>
         `<button class="dot ${st.contact === n ? 'on' : ''}" data-grp="${esc(g)}" data-contact="${n}">${n}</button>`
       ).join('');
+      const sel = st.flights || [];
       const flights = FLIGHTS.map(f =>
-        `<button class="chip sm ${st.flight === f ? 'on' : ''}" data-grp="${esc(g)}" data-flight="${esc(f)}">${f}</button>`
+        `<button class="chip sm ${sel.includes(f) ? 'on' : ''}" data-grp="${esc(g)}" data-flight="${esc(f)}">${f}</button>`
       ).join('');
       panel = `
         <div class="group-panel">
           <div class="lbl">Contact quality (1 = mishit · 5 = flush)</div>
           <div class="contact-dots">${dots}</div>
-          <div class="lbl">Ball flight tendency</div>
+          <div class="lbl">Ball flight tendency — tap all that apply</div>
           <div class="chip-row">${flights}</div>
         </div>`;
     }
@@ -674,7 +748,7 @@ function renderGroupBlocks() {
     btn.addEventListener('click', () => {
       const g = btn.dataset.grpToggle;
       if (logDraft.groups[g]) delete logDraft.groups[g];
-      else logDraft.groups[g] = { contact: 0, flight: '' };
+      else logDraft.groups[g] = { contact: 0, flights: [] };
       renderGroupBlocks();
     });
   });
@@ -686,11 +760,13 @@ function renderGroupBlocks() {
       renderGroupBlocks();
     });
   });
-  // Flight chips (single-select, toggle off if same)
+  // Flight chips (multi-select — toggle each on/off independently)
   wrap.querySelectorAll('[data-flight]').forEach(btn => {
     btn.addEventListener('click', () => {
       const g = btn.dataset.grp, f = btn.dataset.flight;
-      logDraft.groups[g].flight = (logDraft.groups[g].flight === f) ? '' : f;
+      const list = logDraft.groups[g].flights || (logDraft.groups[g].flights = []);
+      const i = list.indexOf(f);
+      if (i === -1) list.push(f); else list.splice(i, 1);
       renderGroupBlocks();
     });
   });
@@ -741,7 +817,7 @@ function saveSessionFromDraft() {
   const clubGroups = groupKeys.map(g => ({
     group: g,
     contact: logDraft.groups[g].contact || 0,
-    flight: logDraft.groups[g].flight || ''
+    flights: (logDraft.groups[g].flights || []).slice()
   }));
   const drillsDone = Object.keys(logDraft.drillsDone).filter(id => logDraft.drillsDone[id]);
 
@@ -943,10 +1019,10 @@ function renderPrep() {
         allContacts.push(cg.contact);
         (byGroupContacts[cg.group] = byGroupContacts[cg.group] || []).push(cg.contact);
       }
-      if (cg.flight) {
+      flightsOf(cg).forEach(f => {
         byGroupFlights[cg.group] = byGroupFlights[cg.group] || {};
-        byGroupFlights[cg.group][cg.flight] = (byGroupFlights[cg.group][cg.flight] || 0) + 1;
-      }
+        byGroupFlights[cg.group][f] = (byGroupFlights[cg.group][f] || 0) + 1;
+      });
     });
   });
   const avg = arr => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
@@ -1205,9 +1281,10 @@ function drawFlightChart(sessions) {
   // group -> flight -> count
   const data = {};
   sessions.forEach(s => (s.clubGroups || []).forEach(cg => {
-    if (!cg.flight) return;
-    data[cg.group] = data[cg.group] || {};
-    data[cg.group][cg.flight] = (data[cg.group][cg.flight] || 0) + 1;
+    flightsOf(cg).forEach(f => {
+      data[cg.group] = data[cg.group] || {};
+      data[cg.group][f] = (data[cg.group][f] || 0) + 1;
+    });
   }));
 
   const groups = CLUB_GROUPS.filter(g => data[g]);
@@ -1249,6 +1326,63 @@ function drawFlightChart(sessions) {
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMid meet" role="img" aria-label="Ball flight distribution">${rows}</svg>
     </div>
     <div class="legend">${legend}</div>`;
+}
+
+/* ---------------------------------------------------------------------------
+   VIEW 5: TERMS — beginner glossary with search
+   --------------------------------------------------------------------------- */
+
+let termQuery = '';
+
+function renderTerms() {
+  const q = termQuery.trim().toLowerCase();
+  const matches = TERMS.filter(t =>
+    !q || t.term.toLowerCase().includes(q) || t.def.toLowerCase().includes(q) || t.cat.toLowerCase().includes(q)
+  );
+
+  // Group matches by category, preserving TERM_CATS order.
+  let sections = '';
+  TERM_CATS.forEach(cat => {
+    const items = matches.filter(t => t.cat === cat);
+    if (!items.length) return;
+    sections += `
+      <div class="card">
+        <div class="section-label">${cat}</div>
+        ${items.map(t => `
+          <div class="term-row">
+            <div class="term-head">
+              <span class="term-name" style="${cat === 'Ball Flight' && FLIGHT_COLORS[t.term] ? `color:${FLIGHT_COLORS[t.term]}` : ''}">${esc(t.term)}</span>
+            </div>
+            <div class="term-def">${esc(t.def)}</div>
+          </div>`).join('')}
+      </div>`;
+  });
+
+  const body = matches.length ? sections
+    : `<div class="empty"><div class="big">🔍</div><h3>No matches</h3><p>Nothing found for "${esc(termQuery)}". Try another word.</p></div>`;
+
+  main.innerHTML = `
+    <div class="view">
+      <div class="view-head">
+        <h2>Terms</h2>
+        <div class="sub">Golf shorthand, in plain English.</div>
+      </div>
+      <div class="card">
+        <input type="text" id="termSearch" placeholder="🔍 Search terms (e.g. slice, tempo, wedge)" value="${esc(termQuery)}">
+      </div>
+      ${body}
+    </div>`;
+
+  const box = document.getElementById('termSearch');
+  box.addEventListener('input', e => {
+    termQuery = e.target.value;
+    const start = e.target.selectionStart;
+    renderTerms();
+    // keep focus + caret after re-render
+    const nb = document.getElementById('termSearch');
+    nb.focus();
+    try { nb.setSelectionRange(start, start); } catch (_) {}
+  });
 }
 
 /* ---------------------------------------------------------------------------
@@ -1374,7 +1508,7 @@ function confirmImport(parsed) {
     [
       { label: 'Cancel', cls: 'ghost', onClick: closeModal },
       { label: 'Replace data', cls: 'primary', onClick: () => {
-        DATA = { lessons: parsed.lessons, sessions: parsed.sessions };
+        DATA = normalizeData(parsed);
         saveData(DATA);
         closeModal();
         render();
