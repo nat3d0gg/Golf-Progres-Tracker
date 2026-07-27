@@ -393,6 +393,12 @@
     padding: 2px 9px; border-radius: 999px;
   }
   .tag-fl { font-size: 0.78rem; color: #7D6413; font-weight: 800; }
+  .tag-type {
+    font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 3px 9px; border-radius: 999px;
+    background: var(--sand, #E9D8A6); color: #6b5a1f;
+  }
+  .tag-type.course { background: rgba(31,122,68,0.16); color: var(--forest); }
 
   /* ---------- Empty state (a hazard) ---------- */
   .empty { text-align: center; padding: 34px 20px 40px; color: var(--ink-soft); }
@@ -624,6 +630,10 @@
       </svg>
       <span class="sync-dot"></span><span class="sync-text">Connecting…</span>
     </div>
+    <button class="icon-btn" id="btnSettings" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2.2M12 18.3v2.2M4.6 8.2l1.9 1.1M17.5 14.7l1.9 1.1M4.6 15.8l1.9-1.1M17.5 9.3l1.9-1.1"/></svg>
+      <span class="lbl">Settings</span>
+    </button>
     <button class="icon-btn" id="btnExport" title="Export data">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7.5 11.5 12 16l4.5-4.5"/><path d="M5 19h14"/></svg>
       <span class="lbl">Export</span>
@@ -676,7 +686,20 @@
 const STORAGE_KEY = 'rangelog_v1';
 
 const CLUB_GROUPS = ['Driver', 'Woods/Hybrids', 'Long Irons', 'Mid Irons', 'Wedges'];
-const FLIGHTS = ['Straight', 'Pull', 'Push', 'Slice', 'Hook', 'Fat', 'Thin'];
+// The default ball-flight tendencies. The live list is editable in Settings and
+// stored under data.settings.flights — read it via flightOptions().
+const DEFAULT_FLIGHTS = ['Straight', 'Pull', 'Push', 'Slice', 'Hook', 'Fat', 'Thin'];
+
+// Session types — range practice vs. on-course rounds.
+const SESSION_TYPES = [
+  { id: 'range', label: 'Range' },
+  { id: '9',     label: '9 holes' },
+  { id: '18',    label: '18 holes' }
+];
+function sessionTypeLabel(id) {
+  const t = SESSION_TYPES.find(x => x.id === id);
+  return t ? t.label : 'Range';
+}
 
 // Colors used for ball-flight distribution charts (tuned for the light ground).
 const FLIGHT_COLORS = {
@@ -688,6 +711,23 @@ const FLIGHT_COLORS = {
   Fat:      '#8A6A3C',
   Thin:     '#3F9E93'
 };
+// Fallback palette for user-added custom tendencies (deterministic by name).
+const FALLBACK_FLIGHT_COLORS = ['#E07A5F', '#6C91BF', '#3D8361', '#B5838D', '#9A7BB8', '#C08457', '#4C9A8E', '#A9772A'];
+function flightColor(f) {
+  if (FLIGHT_COLORS[f]) return FLIGHT_COLORS[f];
+  let h = 0; for (let i = 0; i < f.length; i++) h = (h * 31 + f.charCodeAt(i)) >>> 0;
+  return FALLBACK_FLIGHT_COLORS[h % FALLBACK_FLIGHT_COLORS.length];
+}
+/** Current ball-flight tendency options (editable in Settings). */
+function flightOptions() {
+  const f = DATA && DATA.settings && DATA.settings.flights;
+  return (Array.isArray(f) && f.length) ? f : DEFAULT_FLIGHTS;
+}
+/** Chart order: options first, then any extra flight names still present in data. */
+function flightOrder(present) {
+  const opts = flightOptions();
+  return [...opts, ...(present || []).filter(p => !opts.includes(p))];
+}
 
 // Small inline-SVG kit — rounded, illustrated, no external assets.
 const SVG = {
@@ -765,19 +805,37 @@ const OFFLINE_PASS = 'golf';
 function getPass() { return localStorage.getItem(PASS_KEY) || ''; }
 
 function freshData() {
-  return { lessons: [], sessions: [] };
+  return { lessons: [], sessions: [], settings: { flights: DEFAULT_FLIGHTS.slice() } };
+}
+
+/** Clean a flight-tendency list: trim, cap length, de-dupe (case-insensitive). */
+function normalizeFlightList(arr) {
+  if (!Array.isArray(arr)) return null;
+  const seen = new Set(); const out = [];
+  arr.forEach(f => {
+    if (typeof f !== 'string') return;
+    const v = f.trim().slice(0, 40);
+    const key = v.toLowerCase();
+    if (v && !seen.has(key)) { seen.add(key); out.push(v); }
+  });
+  return out.length ? out.slice(0, 20) : null;
+}
+function normalizeType(t) {
+  return SESSION_TYPES.some(x => x.id === t) ? t : 'range';
 }
 
 /**
  * Normalize/migrate a raw data object into the current schema.
- * Migration: club groups used to store a single `flight` string; they now
- * store a `flights` array (multi-select). Old records are upgraded on read.
+ * Migrations: club groups moved single `flight` → `flights` array; sessions
+ * gained a `type` (default 'range'); settings.flights holds the editable
+ * tendency list (defaults applied when absent).
  */
 function normalizeData(parsed) {
   if (!parsed || typeof parsed !== 'object') return freshData();
   const lessons = Array.isArray(parsed.lessons) ? parsed.lessons : [];
   const sessions = (Array.isArray(parsed.sessions) ? parsed.sessions : []).map(s => ({
     ...s,
+    type: normalizeType(s.type),
     clubGroups: (Array.isArray(s.clubGroups) ? s.clubGroups : []).map(cg => {
       let flights;
       if (Array.isArray(cg.flights)) flights = cg.flights.filter(Boolean);
@@ -787,7 +845,8 @@ function normalizeData(parsed) {
       return out;
     })
   }));
-  return { lessons, sessions };
+  const flights = normalizeFlightList(parsed.settings && parsed.settings.flights) || DEFAULT_FLIGHTS.slice();
+  return { lessons, sessions, settings: { flights } };
 }
 
 /** Load the whole app state. Guards against malformed/absent storage. */
@@ -1141,6 +1200,7 @@ function render() {
 function newLogDraft() {
   return {
     date: todayISO(),
+    type: 'range',        // 'range' | '9' | '18'
     groups: {},           // group -> { open, contact, flight }
     drillsDone: {},       // drillId -> bool
     note: ''
@@ -1183,10 +1243,14 @@ function renderLogForm(seg) {
       ${seg}
 
       <div class="card">
-        <label class="fld" style="margin:0">
+        <label class="fld" style="margin:0 0 14px">
           <span>Date</span>
           <input type="date" id="logDate" value="${esc(logDraft.date)}" max="${todayISO()}">
         </label>
+        <div class="section-label">Session type</div>
+        <div class="chip-row" id="typeChips">
+          ${SESSION_TYPES.map(t => `<button class="chip sm ${logDraft.type === t.id ? 'on' : ''}" data-type="${t.id}">${t.label}</button>`).join('')}
+        </div>
       </div>
 
       <div class="card">
@@ -1221,6 +1285,12 @@ function renderLogForm(seg) {
   document.getElementById('logDate').addEventListener('change', e => { logDraft.date = e.target.value; });
   document.getElementById('logNote').addEventListener('input', e => { logDraft.note = e.target.value; });
   document.getElementById('saveSession').addEventListener('click', saveSessionFromDraft);
+
+  // Session type chips (single-select; no full re-render so inputs keep focus)
+  main.querySelectorAll('#typeChips [data-type]').forEach(b => b.addEventListener('click', () => {
+    logDraft.type = b.dataset.type;
+    main.querySelectorAll('#typeChips [data-type]').forEach(x => x.classList.toggle('on', x.dataset.type === logDraft.type));
+  }));
 }
 
 /** Resolve a drill id to its name across all lessons (drills can outlive a deleted lesson reference). */
@@ -1252,6 +1322,7 @@ function sessionEntryHTML(s) {
       <div class="grow">
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
           <strong>${fmtDate(s.date)}</strong>
+          <span class="tag-type ${s.type && s.type !== 'range' ? 'course' : ''}">${sessionTypeLabel(s.type)}</span>
         </div>
         <div class="mt8">${groups}</div>
         ${drills}
@@ -1309,8 +1380,8 @@ function renderGroupBlocks() {
         `<button class="dot ${st.contact === n ? 'on' : ''}" data-grp="${esc(g)}" data-contact="${n}" aria-label="Contact ${n} of 5">${n}</button>`
       ).join('');
       const sel = st.flights || [];
-      const flights = FLIGHTS.map(f =>
-        `<button class="chip sm ${sel.includes(f) ? 'on' : ''}" data-grp="${esc(g)}" data-flight="${esc(f)}">${f}</button>`
+      const flights = flightOptions().map(f =>
+        `<button class="chip sm ${sel.includes(f) ? 'on' : ''}" data-grp="${esc(g)}" data-flight="${esc(f)}">${esc(f)}</button>`
       ).join('');
       panel = `
         <div class="group-panel">
@@ -1410,6 +1481,7 @@ function saveSessionFromDraft() {
   const session = {
     id: uid(),
     date: logDraft.date || todayISO(),
+    type: logDraft.type || 'range',
     clubGroups,
     drillsDone,
     note: (logDraft.note || '').trim()
@@ -1896,6 +1968,9 @@ function drawFlightChart(sessions) {
     el.innerHTML = `<p class="muted">No ball-flight data logged yet.</p>`;
     return;
   }
+  // Flights actually present, ordered by the current options (extras appended).
+  const present = [...new Set(groups.flatMap(g => Object.keys(data[g])))];
+  const ordered = flightOrder(present).filter(f => present.includes(f));
 
   const rowH = 30, gap = 18, labelW = 100, barW = 420, padR = 12;
   const W = labelW + barW + padR;
@@ -1909,10 +1984,10 @@ function drawFlightChart(sessions) {
     let x = labelW;
     let segs = '';
     clips += `<clipPath id="fc${i}"><rect x="${labelW}" y="${y}" width="${barW}" height="${rowH}" rx="${rowH/2}"></rect></clipPath>`;
-    FLIGHTS.forEach(f => {
+    ordered.forEach(f => {
       const c = counts[f]; if (!c) return;
       const w = (c / total) * barW;
-      segs += `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${rowH}" fill="${FLIGHT_COLORS[f]}">
+      segs += `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${rowH}" fill="${flightColor(f)}">
         <title>${g} — ${f}: ${c}</title></rect>`;
       if (w > 26) segs += `<text x="${(x + w/2).toFixed(1)}" y="${y + rowH/2 + 4}" fill="#FBFBF4" font-size="11.5" font-weight="800" text-anchor="middle">${c}</text>`;
       x += w;
@@ -1922,8 +1997,8 @@ function drawFlightChart(sessions) {
       <g clip-path="url(#fc${i})">${segs}</g>`;
   });
 
-  const legend = FLIGHTS.map(f =>
-    `<span><span class="sw" style="background:${FLIGHT_COLORS[f]}"></span>${f}</span>`
+  const legend = ordered.map(f =>
+    `<span><span class="sw" style="background:${flightColor(f)}"></span>${esc(f)}</span>`
   ).join('');
 
   el.innerHTML = `
@@ -2134,6 +2209,60 @@ function confirmImport(parsed) {
         toast('Data imported', true);
       } }
     ]);
+}
+
+/* ---------- Settings ---------- */
+
+document.getElementById('btnSettings').addEventListener('click', openSettings);
+
+function openSettings() {
+  // Editable copy of the current tendency list.
+  let flights = flightOptions().slice();
+
+  const body = `
+    <div class="section-label">Ball-flight tendencies</div>
+    <p class="muted" style="margin-bottom:12px">These are the buttons you tap when logging a session. Add your own, rename, or trim the list.</p>
+    <div id="flightRows"></div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:4px">
+      <button class="btn sm ghost" id="addFlight">＋ Add tendency</button>
+      <button class="btn sm ghost" id="resetFlights">Reset to default</button>
+    </div>`;
+
+  openModal('Settings', body, [
+    { label: 'Cancel', cls: 'ghost', onClick: closeModal },
+    { label: 'Save', cls: 'primary', onClick: () => saveSettings(flights) }
+  ]);
+
+  function drawFlights() {
+    const box = document.getElementById('flightRows');
+    box.innerHTML = flights.map((f, i) => `
+      <div class="drill-row">
+        <input type="text" placeholder="Tendency ${i + 1}" data-fi="${i}" value="${esc(f)}" maxlength="40">
+        ${flights.length > 1 ? `<button class="rm" data-rm="${i}" aria-label="Remove">×</button>` : ''}
+      </div>`).join('');
+    box.querySelectorAll('[data-fi]').forEach(inp =>
+      inp.addEventListener('input', e => { flights[Number(e.target.dataset.fi)] = e.target.value; }));
+    box.querySelectorAll('[data-rm]').forEach(btn =>
+      btn.addEventListener('click', () => { flights.splice(Number(btn.dataset.rm), 1); drawFlights(); }));
+    document.getElementById('addFlight').classList.toggle('hidden', flights.length >= 20);
+  }
+  drawFlights();
+  document.getElementById('addFlight').addEventListener('click', () => {
+    if (flights.length < 20) { flights.push(''); drawFlights(); }
+  });
+  document.getElementById('resetFlights').addEventListener('click', () => {
+    flights = DEFAULT_FLIGHTS.slice(); drawFlights();
+  });
+}
+
+function saveSettings(flights) {
+  const clean = normalizeFlightList(flights);
+  if (!clean) { toast('Add at least one tendency'); return; }
+  const settings = { flights: clean };
+  mutate({ action: 'save-settings', settings }, () => { DATA.settings = settings; });
+  closeModal();
+  render();
+  toast('Settings saved', true);
 }
 
 // Close modal on Escape

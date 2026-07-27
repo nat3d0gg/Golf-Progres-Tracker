@@ -28,9 +28,12 @@ const MAX_SESSIONS = 2000;
 const MAX_DRILLS = 3;
 const MAX_TEXT = 200;      // focus / swing thought / drill name / note
 const MAX_ID = 64;
+const MAX_FLIGHTS = 20;    // per club group, and per settings list
+const MAX_FLIGHT_LEN = 40;
 
 const CLUB_GROUPS = ["Driver", "Woods/Hybrids", "Long Irons", "Mid Irons", "Wedges"];
-const FLIGHTS = ["Straight", "Pull", "Push", "Slice", "Hook", "Fat", "Thin"];
+const DEFAULT_FLIGHTS = ["Straight", "Pull", "Push", "Slice", "Hook", "Fat", "Thin"];
+const SESSION_TYPE_IDS = ["range", "9", "18"];
 
 function sanitizeString(value, max) {
   if (typeof value !== "string") return "";
@@ -85,7 +88,8 @@ function validateSession(input) {
       let flights = [];
       if (Array.isArray(cg.flights)) flights = cg.flights;
       else if (cg.flight) flights = [cg.flight]; // legacy single value
-      flights = flights.filter((f) => FLIGHTS.includes(f));
+      // Sanitize as free-form strings (tendencies are user-editable now).
+      flights = dedupeFlights(flights);
       return { group, contact, flights };
     })
     .filter(Boolean);
@@ -97,17 +101,37 @@ function validateSession(input) {
   return {
     id: sanitizeId(input.id) || newId(),
     date: sanitizeDate(input.date) || new Date().toISOString().slice(0, 10),
+    type: SESSION_TYPE_IDS.includes(input.type) ? input.type : "range",
     clubGroups,
     drillsDone,
     note: sanitizeString(input.note, MAX_TEXT),
   };
 }
 
+// Trim/cap/de-dupe (case-insensitive) a list of tendency strings.
+function dedupeFlights(arr) {
+  const seen = new Set();
+  const out = [];
+  for (const f of Array.isArray(arr) ? arr : []) {
+    const v = sanitizeString(f, MAX_FLIGHT_LEN);
+    const key = v.toLowerCase();
+    if (v && !seen.has(key)) { seen.add(key); out.push(v); }
+    if (out.length >= MAX_FLIGHTS) break;
+  }
+  return out;
+}
+
+function validateSettings(input) {
+  const flights = dedupeFlights(input && input.flights);
+  return { flights: flights.length ? flights : DEFAULT_FLIGHTS.slice() };
+}
+
 async function readState() {
   const raw = await redis.get(KEY);
   const lessons = raw && Array.isArray(raw.lessons) ? raw.lessons : [];
   const sessions = raw && Array.isArray(raw.sessions) ? raw.sessions : [];
-  return { lessons, sessions };
+  const settings = validateSettings(raw && raw.settings);
+  return { lessons, sessions, settings };
 }
 
 async function writeState(state) {
@@ -183,11 +207,17 @@ export default async function handler(req, res) {
         return res.status(200).json(await writeState(state));
       }
 
+      if (action === "save-settings") {
+        state.settings = validateSettings(body.settings);
+        return res.status(200).json(await writeState(state));
+      }
+
       if (action === "replace-all") {
         const data = body.data || {};
         const lessons = (Array.isArray(data.lessons) ? data.lessons : []).map(validateLesson).filter(Boolean).slice(0, MAX_LESSONS);
         const sessions = (Array.isArray(data.sessions) ? data.sessions : []).map(validateSession).filter(Boolean).slice(0, MAX_SESSIONS);
-        return res.status(200).json(await writeState({ lessons, sessions }));
+        const settings = validateSettings(data.settings);
+        return res.status(200).json(await writeState({ lessons, sessions, settings }));
       }
 
       return res.status(400).json({ error: "Unknown action" });
