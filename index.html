@@ -183,7 +183,7 @@
   /* ---------- Inputs ---------- */
   label.fld { display: block; margin-bottom: 12px; }
   label.fld > span { display: block; font-size: 0.78rem; color: var(--text-dim); margin-bottom: 5px; font-weight: 600; }
-  input[type=text], input[type=date], textarea, select {
+  input[type=text], input[type=date], input[type=password], textarea, select {
     width: 100%; min-height: var(--tap);
     background: var(--bg-2); color: var(--text);
     border: 1.5px solid var(--border); border-radius: var(--radius-sm);
@@ -379,6 +379,32 @@
   }
   @keyframes toastin { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
+  /* ---------- Password lock ---------- */
+  .lock {
+    position: fixed; inset: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    background: var(--bg);
+    background-image:
+      radial-gradient(1200px 500px at 50% -10%, rgba(74,222,91,0.12), transparent 60%),
+      radial-gradient(900px 400px at 90% 110%, rgba(245,181,61,0.06), transparent 60%);
+  }
+  .lock-card {
+    width: 100%; max-width: 360px; text-align: center;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 34px 24px; box-shadow: var(--shadow);
+  }
+  .lock-logo {
+    width: 64px; height: 64px; border-radius: 16px; margin: 0 auto 16px;
+    display: grid; place-items: center; font-size: 34px;
+    background: radial-gradient(circle at 30% 30%, var(--accent), var(--accent-dim));
+    box-shadow: 0 0 26px rgba(74,222,91,0.45);
+  }
+  .lock-card h2 { font-size: 1.5rem; margin-bottom: 4px; }
+  .lock-card input { margin-top: 18px; text-align: center; font-size: 1.1rem; letter-spacing: 0.04em; }
+  .lock-error { color: var(--danger); font-size: 0.85rem; min-height: 1.2em; margin-top: 10px; font-weight: 600; }
+  .lock-card .btn { margin-top: 14px; height: 50px; }
+
   .hidden { display: none !important; }
   .mt8 { margin-top: 8px; } .mt12 { margin-top: 12px; } .mt16 { margin-top: 16px; }
   .muted { color: var(--text-dim); font-size: 0.85rem; }
@@ -557,6 +583,14 @@ const API_URL = '/api/data';
 const OUTBOX_KEY = 'rangelog_outbox';
 const POLL_MS = 15000;          // live refresh cadence (paused when tab hidden)
 
+// Shared-secret gate. The entered password is stored locally and sent on every
+// request as x-rangelog-pass; the server checks it against RANGELOG_PASSWORD
+// (default "golf"). OFFLINE_PASS is the fallback used to gate the UI when the
+// server can't be reached (local-only use) — keep it equal to the server default.
+const PASS_KEY = 'rangelog_pass';
+const OFFLINE_PASS = 'golf';
+function getPass() { return localStorage.getItem(PASS_KEY) || ''; }
+
 function freshData() {
   return { lessons: [], sessions: [] };
 }
@@ -613,9 +647,15 @@ function saveData(data) {
 let syncStatus = 'connecting';  // 'synced' | 'saving' | 'offline' | 'connecting'
 let flushing = false;
 
+function authError() { const e = new Error('Unauthorized'); e.auth = true; return e; }
+
 /** GET the shared state. Resolves to {lessons, sessions} or throws. */
 async function apiGet() {
-  const r = await fetch(API_URL, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+  const r = await fetch(API_URL, {
+    headers: { Accept: 'application/json', 'x-rangelog-pass': getPass() },
+    cache: 'no-store'
+  });
+  if (r.status === 401) throw authError();
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return normalizeData(await r.json());
 }
@@ -624,9 +664,10 @@ async function apiGet() {
 async function apiPost(body) {
   const r = await fetch(API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-rangelog-pass': getPass() },
     body: JSON.stringify(body)
   });
+  if (r.status === 401) throw authError();
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((data && data.error) || ('HTTP ' + r.status));
   return normalizeData(data);
@@ -664,6 +705,7 @@ async function flushOutbox() {
         serverState = await apiPost(q[0]);
       } catch (e) {
         setSyncStatus('offline');
+        if (e.auth) showLock();       // password wrong/changed — re-gate
         return false;                 // leave the queue intact; retry later
       }
       q.shift();
@@ -700,7 +742,81 @@ async function pull() {
     setSyncStatus('synced');
   } catch (e) {
     setSyncStatus('offline');
+    if (e.auth) showLock();           // password wrong/changed — re-gate
   }
+}
+
+/* ---------- Password gate ---------- */
+
+/**
+ * Verify a candidate password. Returns true if it unlocks:
+ *  - server says OK (200), or
+ *  - server unreachable (no backend / offline) AND it matches OFFLINE_PASS.
+ * Returns false for a definite rejection (server 401).
+ */
+async function tryUnlock(candidate) {
+  try {
+    const r = await fetch(API_URL, {
+      headers: { Accept: 'application/json', 'x-rangelog-pass': candidate },
+      cache: 'no-store'
+    });
+    if (r.ok) return true;
+    if (r.status === 401) return false;
+    return candidate === OFFLINE_PASS;   // 5xx / misconfigured backend
+  } catch {
+    return candidate === OFFLINE_PASS;   // network unreachable → local-only gate
+  }
+}
+
+function beginSync() {
+  setSyncStatus('connecting');
+  pull().then(startPolling);
+}
+
+function setLockError(msg) {
+  const e = document.getElementById('lockError');
+  if (e) e.textContent = msg || '';
+}
+
+/** Full-screen lock overlay. Idempotent. */
+function showLock() {
+  stopPolling();
+  if (document.getElementById('lockScreen')) return;
+  const el = document.createElement('div');
+  el.id = 'lockScreen';
+  el.className = 'lock';
+  el.innerHTML = `
+    <div class="lock-card">
+      <div class="lock-logo">⛳</div>
+      <h2>RangeLog</h2>
+      <p class="muted">Enter the password to continue.</p>
+      <input type="password" id="lockInput" placeholder="Password"
+             autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <div id="lockError" class="lock-error"></div>
+      <button class="btn primary block" id="lockBtn">Unlock</button>
+    </div>`;
+  document.body.appendChild(el);
+
+  const input = el.querySelector('#lockInput');
+  const btn = el.querySelector('#lockBtn');
+  const submit = async () => {
+    const candidate = input.value;
+    if (!candidate) { setLockError('Enter a password'); return; }
+    btn.disabled = true; btn.textContent = 'Checking…'; setLockError('');
+    const okUnlock = await tryUnlock(candidate);
+    if (okUnlock) {
+      localStorage.setItem(PASS_KEY, candidate);
+      el.remove();
+      beginSync();
+    } else {
+      setLockError('Incorrect password');
+      btn.disabled = false; btn.textContent = 'Unlock';
+      input.select();
+    }
+  };
+  btn.addEventListener('click', submit);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  setTimeout(() => input.focus(), 60);
 }
 
 /**
@@ -1720,9 +1836,10 @@ window.addEventListener('offline', () => setSyncStatus('offline'));
 /* ---------- Boot ---------- */
 // 1) Paint instantly from the local cache (already loaded into DATA).
 switchView('log');
-setSyncStatus('connecting');
-// 2) Reconcile with the shared server state, then keep it live.
-pull().then(startPolling);
+// 2) Gate on the password. A stored pass is trusted for boot; if it's actually
+//    wrong the first API call returns 401 and re-locks. No stored pass → lock.
+if (getPass()) beginSync();
+else showLock();
 </script>
 </body>
 </html>

@@ -43,8 +43,18 @@ log on your phone at the range, see it on any other device within seconds.
 3. Redeploy. That's it.
 
 > **Note:** the dataset is a single shared log (no accounts), like a shared
-> notebook — anyone with the URL reads and writes the same data. That's ideal
-> for one golfer across their own devices.
+> notebook — everyone who knows the password reads and writes the same data.
+> That's ideal for one golfer across their own devices.
+
+## Password
+
+The app is gated by a shared password (**default `golf`**). The client sends it
+on every request in the `x-rangelog-pass` header; the serverless function checks
+it against `RANGELOG_PASSWORD` and rejects anything else with `401`, so the
+Upstash data isn't open to the world. To change it, set `RANGELOG_PASSWORD` in
+Vercel's environment variables (and update `OFFLINE_PASS` in `index.html` if you
+want the local-only fallback to match). It's a lightweight gate for a personal
+tracker, not bank-grade auth.
 
 ## Data model
 

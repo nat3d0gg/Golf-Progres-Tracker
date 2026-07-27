@@ -11,6 +11,17 @@ const redis = new Redis({
 // used in localStorage, so the concept carries over 1:1.
 const KEY = "rangelog_v1";
 
+// Shared-secret gate. Defaults to "golf"; override in Vercel with the
+// RANGELOG_PASSWORD environment variable (change the client's fallback to
+// match if you want the offline gate to agree). The client sends it in the
+// x-rangelog-pass header on every request.
+const PASSWORD = process.env.RANGELOG_PASSWORD || "golf";
+
+function isAuthorized(req) {
+  const sent = req.headers && (req.headers["x-rangelog-pass"] || req.headers["X-Rangelog-Pass"]);
+  return typeof sent === "string" && sent === PASSWORD;
+}
+
 // ---- Sanity caps (defensive; the client sends well-formed data) ----
 const MAX_LESSONS = 500;
 const MAX_SESSIONS = 2000;
@@ -106,6 +117,11 @@ async function writeState(state) {
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store, max-age=0");
+
+  // Every request must carry the shared secret.
+  if (!isAuthorized(req)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 
   try {
     if (req.method === "GET") {
