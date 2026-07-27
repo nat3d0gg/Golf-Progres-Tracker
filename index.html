@@ -298,6 +298,27 @@
     background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border);
   }
 
+  /* ---------- Segmented control (Log: New / History) ---------- */
+  .seg {
+    display: flex; gap: 4px; margin-bottom: 14px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 4px;
+  }
+  .seg button {
+    flex: 1; min-height: 40px; border: none; border-radius: 9px;
+    background: transparent; color: var(--text-dim);
+    font-weight: 700; font-size: 0.9rem;
+  }
+  .seg button.on {
+    background: var(--surface-2); color: var(--accent);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+
+  /* ---------- Entry history rows ---------- */
+  .hist-cg { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 0; font-size: 0.9rem; }
+  .tag-num { font-size: 0.74rem; color: var(--text-dim); background: var(--bg-2); border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px; }
+  .tag-fl { font-size: 0.78rem; color: var(--amber); font-weight: 600; }
+
   /* ---------- Empty state ---------- */
   .empty {
     text-align: center; padding: 40px 20px; color: var(--text-dim);
@@ -728,7 +749,10 @@ function applyServerData(serverState) {
   DATA = serverState;
   saveData(DATA);
   if (currentView === 'terms') return;              // terms don't depend on data
-  if (currentView === 'log') renderHomeworkBlock(activeLesson()); // keep the draft/inputs
+  else if (currentView === 'log') {
+    if (logTab === 'history') renderLog();          // refresh the entry list
+    else renderHomeworkBlock(activeLesson());       // keep the draft/inputs intact
+  }
   else render();
 }
 
@@ -858,6 +882,7 @@ let currentView = 'log';        // active view id
 
 // Transient form state for the Log view (not persisted until Save).
 let logDraft = null;
+let logTab = 'new';             // 'new' (entry form) | 'history' (past entries)
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -955,14 +980,37 @@ function newLogDraft() {
 
 function renderLog() {
   if (!logDraft) logDraft = newLogDraft();
-  const lesson = activeLesson();
 
-  let html = `
+  // Segmented control shared by both sub-tabs.
+  const seg = `
+    <div class="seg" id="logSeg">
+      <button class="${logTab === 'new' ? 'on' : ''}" data-logtab="new">＋ New</button>
+      <button class="${logTab === 'history' ? 'on' : ''}" data-logtab="history">History${DATA.sessions.length ? ' (' + DATA.sessions.length + ')' : ''}</button>
+    </div>`;
+
+  if (logTab === 'history') renderLogHistory(seg);
+  else renderLogForm(seg);
+
+  // Wire the segmented control (present in both sub-tabs).
+  document.querySelectorAll('#logSeg button').forEach(b => {
+    b.addEventListener('click', () => {
+      if (logTab === b.dataset.logtab) return;
+      logTab = b.dataset.logtab;
+      renderLog();
+      window.scrollTo(0, 0);
+    });
+  });
+}
+
+function renderLogForm(seg) {
+  const lesson = activeLesson();
+  main.innerHTML = `
     <div class="view">
       <div class="view-head">
         <h2>Log Session</h2>
         <div class="sub">Tap what you hit, save in seconds.</div>
       </div>
+      ${seg}
 
       <div class="card">
         <label class="fld" style="margin:0">
@@ -993,7 +1041,6 @@ function renderLog() {
       <button class="btn primary block" id="saveSession">💾 Save Session</button>
     </div>
   `;
-  main.innerHTML = html;
 
   renderGroupBlocks();
   renderHomeworkBlock(lesson);
@@ -1002,6 +1049,79 @@ function renderLog() {
   document.getElementById('logDate').addEventListener('change', e => { logDraft.date = e.target.value; });
   document.getElementById('logNote').addEventListener('input', e => { logDraft.note = e.target.value; });
   document.getElementById('saveSession').addEventListener('click', saveSessionFromDraft);
+}
+
+/** Resolve a drill id to its name across all lessons (drills can outlive a deleted lesson reference). */
+function drillNameById(id) {
+  for (const l of DATA.lessons) {
+    const d = (l.drills || []).find(x => x.id === id);
+    if (d) return d.name;
+  }
+  return null;
+}
+
+/** One past entry, rendered as a card with a delete button. */
+function sessionEntryHTML(s) {
+  const groups = (s.clubGroups || []).map(cg => {
+    const flights = flightsOf(cg);
+    const contact = cg.contact ? `<span class="tag-num">contact ${cg.contact}/5</span>` : '';
+    const fl = flights.length ? `<span class="tag-fl">${flights.map(esc).join(', ')}</span>` : '';
+    return `<div class="hist-cg"><strong>${esc(cg.group)}</strong>${contact}${fl}</div>`;
+  }).join('') || '<div class="meta">No club groups recorded</div>';
+
+  const drillNames = (s.drillsDone || []).map(drillNameById).filter(Boolean);
+  const drills = drillNames.length
+    ? `<div class="mt8">${drillNames.map(n => `<span class="drill-tag">✓ ${esc(n)}</span>`).join('')}</div>`
+    : '';
+  const note = s.note ? `<div class="mt8">💬 <em>${esc(s.note)}</em></div>` : '';
+
+  return `
+    <div class="row-item">
+      <div class="grow">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+          <strong>${fmtDate(s.date)}</strong>
+        </div>
+        <div class="mt8">${groups}</div>
+        ${drills}
+        ${note}
+      </div>
+      <button class="btn sm danger" data-del-session="${esc(s.id)}">Delete</button>
+    </div>`;
+}
+
+function renderLogHistory(seg) {
+  const sessions = DATA.sessions.slice().sort(sortByDateDesc);
+  const list = sessions.length
+    ? sessions.map(sessionEntryHTML).join('')
+    : emptyState('📝', 'No entries yet', 'Logged range sessions will appear here. Switch to “New” to log one.');
+
+  main.innerHTML = `
+    <div class="view">
+      <div class="view-head">
+        <h2>Entry Log</h2>
+        <div class="sub">${sessions.length} session${sessions.length === 1 ? '' : 's'} logged.</div>
+      </div>
+      ${seg}
+      <div class="mt12">${list}</div>
+    </div>`;
+
+  main.querySelectorAll('[data-del-session]').forEach(b =>
+    b.addEventListener('click', () => deleteSession(b.dataset.delSession)));
+}
+
+function deleteSession(id) {
+  const s = DATA.sessions.find(x => x.id === id);
+  if (!s) return;
+  confirmModal('Delete this entry?',
+    `Your ${fmtDate(s.date)} range session will be permanently removed.`,
+    () => {
+      mutate({ action: 'delete-session', id }, () => {
+        DATA.sessions = DATA.sessions.filter(x => x.id !== id);
+      });
+      closeModal();
+      renderLog();
+      toast('🗑️ Entry deleted');
+    });
 }
 
 function renderGroupBlocks() {
