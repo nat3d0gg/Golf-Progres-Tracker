@@ -1,0 +1,10 @@
+{
+  "name": "rangelog",
+  "version": "1.0.0",
+  "description": "A golf range session + lesson tracker with live shared sync",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@upstash/redis": "^1.34.3"
+  }
+}

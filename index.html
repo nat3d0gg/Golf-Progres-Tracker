@@ -86,6 +86,18 @@
   .brand h1 { font-size: 1.15rem; }
   .brand .tag { color: var(--text-faint); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
   .topbar .spacer { flex: 1; }
+  .sync {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: 0.72rem; font-weight: 600; color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); flex: none; }
+  .sync.pulse .sync-dot { animation: syncpulse 1s ease-in-out infinite; }
+  @keyframes syncpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  /* Hide the label on very narrow phones, keep the dot */
+  @media (max-width: 400px) { .sync .sync-text { display: none; } }
   .icon-btn {
     height: var(--tap); min-width: var(--tap); padding: 0 12px;
     border-radius: var(--radius-sm);
@@ -424,6 +436,9 @@
       </div>
     </div>
     <div class="spacer"></div>
+    <div id="syncStatus" class="sync" title="Live sync status">
+      <span class="sync-dot"></span><span class="sync-text">Connecting…</span>
+    </div>
     <button class="icon-btn" id="btnExport" title="Export data">⬇ Export</button>
     <button class="icon-btn" id="btnImport" title="Import data">⬆ Import</button>
     <input type="file" id="importFile" accept="application/json,.json" class="hidden">
@@ -525,8 +540,22 @@ const TERMS = [
 const TERM_CATS = ['Ball Flight', 'Contact', 'Swing', 'Clubs', 'On the Course'];
 
 /* ============================================================================
-   2. DATA LAYER — the ONLY place that talks to localStorage.
+   2. DATA LAYER
+   ----------------------------------------------------------------------------
+   Two tiers, both funneled through a tiny set of functions:
+     • Local cache  — loadData()/saveData(): the ONLY localStorage touchpoints.
+       Used for instant paint on load and as an offline fallback.
+     • Remote sync  — the /api/data serverless endpoint (Upstash Redis) is the
+       shared source of truth. All mutations go through mutate(), which applies
+       an optimistic local change, queues a server action in an outbox (so a
+       flaky range connection never loses a logged session), and reconciles
+       with the server's authoritative response. pull() polls for live updates.
+   To move to a different backend later, swap apiGet()/apiPost() only.
    ============================================================================ */
+
+const API_URL = '/api/data';
+const OUTBOX_KEY = 'rangelog_outbox';
+const POLL_MS = 15000;          // live refresh cadence (paused when tab hidden)
 
 function freshData() {
   return { lessons: [], sessions: [] };
@@ -569,7 +598,7 @@ function loadData() {
   }
 }
 
-/** Persist the whole app state. */
+/** Persist the whole app state to the local cache. */
 function saveData(data) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -577,6 +606,131 @@ function saveData(data) {
     console.error('RangeLog: failed to save data.', e);
     toast('⚠️ Could not save (storage full?)');
   }
+}
+
+/* ---------- Remote sync (Upstash Redis via /api/data) ---------- */
+
+let syncStatus = 'connecting';  // 'synced' | 'saving' | 'offline' | 'connecting'
+let flushing = false;
+
+/** GET the shared state. Resolves to {lessons, sessions} or throws. */
+async function apiGet() {
+  const r = await fetch(API_URL, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return normalizeData(await r.json());
+}
+
+/** POST an action to the server. Resolves to the server's new full state. */
+async function apiPost(body) {
+  const r = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((data && data.error) || ('HTTP ' + r.status));
+  return normalizeData(data);
+}
+
+/* ----- Outbox: queued mutations that must survive a dropped connection ----- */
+
+function loadOutbox() {
+  try { return JSON.parse(localStorage.getItem(OUTBOX_KEY)) || []; }
+  catch { return []; }
+}
+function saveOutbox(q) {
+  try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); } catch {}
+}
+function enqueue(action) {
+  const q = loadOutbox();
+  q.push(action);
+  saveOutbox(q);
+}
+
+/**
+ * Send queued actions to the server in order. Each server reply is the
+ * authoritative merged state, so after the queue drains DATA matches the
+ * server. Returns true if the queue fully drained.
+ */
+async function flushOutbox() {
+  if (flushing) return false;
+  flushing = true;
+  try {
+    let q = loadOutbox();
+    while (q.length) {
+      setSyncStatus('saving');
+      let serverState;
+      try {
+        serverState = await apiPost(q[0]);
+      } catch (e) {
+        setSyncStatus('offline');
+        return false;                 // leave the queue intact; retry later
+      }
+      q.shift();
+      saveOutbox(q);
+      applyServerData(serverState);   // converge on the server's version
+    }
+    setSyncStatus('synced');
+    return true;
+  } finally {
+    flushing = false;
+  }
+}
+
+/**
+ * Adopt server state into DATA + cache, re-rendering without disrupting an
+ * in-progress Log entry. No-op when nothing actually changed.
+ */
+function applyServerData(serverState) {
+  if (JSON.stringify(serverState) === JSON.stringify(DATA)) return;
+  DATA = serverState;
+  saveData(DATA);
+  if (currentView === 'terms') return;              // terms don't depend on data
+  if (currentView === 'log') renderHomeworkBlock(activeLesson()); // keep the draft/inputs
+  else render();
+}
+
+/** Pull the latest shared state (after flushing any pending local writes). */
+async function pull() {
+  const drained = await flushOutbox();
+  if (!drained) return;               // still offline / unsynced — keep local
+  try {
+    const serverState = await apiGet();
+    applyServerData(serverState);
+    setSyncStatus('synced');
+  } catch (e) {
+    setSyncStatus('offline');
+  }
+}
+
+/**
+ * The single write path. Applies `optimistic` to DATA immediately (snappy UI),
+ * caches it, queues the server `action`, then flushes. The app stays fully
+ * usable offline; writes reconcile when the connection returns.
+ */
+function mutate(action, optimistic) {
+  optimistic();
+  saveData(DATA);
+  enqueue(action);
+  flushOutbox();
+}
+
+/* ---------- Sync status indicator ---------- */
+
+const SYNC_LABEL = {
+  connecting: { dot: 'var(--text-faint)', text: 'Connecting…' },
+  synced:     { dot: 'var(--accent)',     text: 'Live' },
+  saving:     { dot: 'var(--amber)',      text: 'Saving…' },
+  offline:    { dot: 'var(--danger)',     text: 'Offline' }
+};
+function setSyncStatus(s) {
+  syncStatus = s;
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  const cfg = SYNC_LABEL[s] || SYNC_LABEL.connecting;
+  el.querySelector('.sync-dot').style.background = cfg.dot;
+  el.querySelector('.sync-text').textContent = cfg.text;
+  el.classList.toggle('pulse', s === 'saving' || s === 'connecting');
 }
 
 /* ============================================================================
@@ -844,14 +998,14 @@ function saveSessionFromDraft() {
   }));
   const drillsDone = Object.keys(logDraft.drillsDone).filter(id => logDraft.drillsDone[id]);
 
-  DATA.sessions.push({
+  const session = {
     id: uid(),
     date: logDraft.date || todayISO(),
     clubGroups,
     drillsDone,
     note: (logDraft.note || '').trim()
-  });
-  saveData(DATA);
+  };
+  mutate({ action: 'add-session', session }, () => { DATA.sessions.push(session); });
 
   logDraft = newLogDraft();
   renderLog();
@@ -972,15 +1126,15 @@ function submitLesson(editing, drills) {
     return;
   }
 
-  if (editing) {
-    editing.date = date;
-    editing.focus = focus;
-    editing.swingThought = swingThought;
-    editing.drills = cleanDrills;
-  } else {
-    DATA.lessons.push({ id: uid(), date, focus, swingThought, drills: cleanDrills });
-  }
-  saveData(DATA);
+  const lesson = {
+    id: editing ? editing.id : uid(),
+    date, focus, swingThought, drills: cleanDrills
+  };
+  mutate({ action: 'upsert-lesson', lesson }, () => {
+    const idx = DATA.lessons.findIndex(l => l.id === lesson.id);
+    if (idx >= 0) DATA.lessons[idx] = lesson;
+    else DATA.lessons.push(lesson);
+  });
   closeModal();
   renderLessons();
   toast(editing ? '✅ Lesson updated' : '✅ Lesson added');
@@ -992,8 +1146,9 @@ function deleteLesson(id) {
   confirmModal('Delete this lesson?',
     `The ${fmtDate(lesson.date)} lesson and its drills will be removed. Logged sessions stay, but references to its drills are dropped.`,
     () => {
-      DATA.lessons = DATA.lessons.filter(l => l.id !== id);
-      saveData(DATA);
+      mutate({ action: 'delete-lesson', id }, () => {
+        DATA.lessons = DATA.lessons.filter(l => l.id !== id);
+      });
       closeModal();
       renderLessons();
       toast('🗑️ Lesson deleted');
@@ -1534,8 +1689,8 @@ function confirmImport(parsed) {
     [
       { label: 'Cancel', cls: 'ghost', onClick: closeModal },
       { label: 'Replace data', cls: 'primary', onClick: () => {
-        DATA = normalizeData(parsed);
-        saveData(DATA);
+        const data = normalizeData(parsed);
+        mutate({ action: 'replace-all', data }, () => { DATA = data; });
         closeModal();
         render();
         toast('⬆ Data imported');
@@ -1546,8 +1701,28 @@ function confirmImport(parsed) {
 // Close modal on Escape
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
+/* ---------- Live sync wiring ---------- */
+
+let pollTimer = null;
+function startPolling() { stopPolling(); pollTimer = setInterval(pull, POLL_MS); }
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+// Refresh when the tab regains attention; pause polling while hidden.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopPolling();
+  else { pull(); startPolling(); }
+});
+window.addEventListener('focus', () => { if (!document.hidden) pull(); });
+// Flush queued writes the moment connectivity returns.
+window.addEventListener('online', () => { pull(); });
+window.addEventListener('offline', () => setSyncStatus('offline'));
+
 /* ---------- Boot ---------- */
+// 1) Paint instantly from the local cache (already loaded into DATA).
 switchView('log');
+setSyncStatus('connecting');
+// 2) Reconcile with the shared server state, then keep it live.
+pull().then(startPolling);
 </script>
 </body>
 </html>
