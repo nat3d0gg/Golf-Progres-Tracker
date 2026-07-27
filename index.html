@@ -3,502 +3,646 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0f1a14">
-<title>RangeLog — Golf Range & Lesson Tracker</title>
+<meta name="theme-color" content="#0B5D33">
+<title>RangeLog — Golf Range &amp; Lesson Tracker</title>
 <style>
   /* ============================================================
      RangeLog — single-file golf range & lesson tracker
-     Design: "night range under floodlights"
+     Design: "the interface is the course" — 1990s retro country
+     club, rendered as soft rounded illustrated flat vector.
+     Reskin only: markup hooks, data model and JS logic unchanged.
      ============================================================ */
 
   :root {
-    --bg:          #0c1611;   /* deep charcoal-green */
-    --bg-2:        #10201a;   /* panel base */
-    --surface:     #16291f;   /* card surface */
-    --surface-2:   #1d3528;   /* raised surface */
-    --border:      #274233;
-    --text:        #f4f8f5;   /* crisp white */
-    --text-dim:    #9db3a5;
-    --text-faint:  #6f8778;
-    --accent:      #4ade5b;   /* bright floodlight green */
-    --accent-dim:  #2f9c3d;
-    --accent-ink:  #04140a;   /* text on accent */
-    --amber:       #f5b53d;
-    --danger:      #ef6b5c;
-    --radius:      14px;
-    --radius-sm:   10px;
-    --tap:         44px;
-    --nav-h:       64px;
-    --shadow:      0 6px 24px rgba(0,0,0,0.45);
+    /* Whites / creams */
+    --white:       #FBFBF4;   /* clubhouse white */
+    --ivory:       #F4F1E4;   /* scorecard ivory */
+    /* Greens */
+    --green:       #1F7A44;   /* putting green */
+    --forest:      #0B5D33;   /* Augusta / structure */
+    --fairway:     #4CAF50;   /* bright fairway */
+    --lime:        #8BD450;   /* highlight */
+    --rough:       #0A3D24;   /* deep rough */
+    /* Accents (used sparingly) */
+    --sand:        #E9D8A6;
+    --water:       #2E86C1;
+    --gold:        #C9A227;
+    --flag:        #D64541;
+
+    --ink:         #103524;
+    --ink-soft:    #4B6B58;
+    --ink-faint:   #7A9186;
+    --line:        rgba(11,93,51,0.16);
+    --line-soft:   rgba(11,93,51,0.10);
+
+    --radius:      22px;
+    --radius-sm:   16px;
+    --tap:         46px;
+    --nav-h:       68px;
+
+    --shadow:      0 10px 26px rgba(11,93,51,0.14);
+    --shadow-soft: 0 4px 12px rgba(11,93,51,0.09);
+
+    --round: ui-rounded, "SF Pro Rounded", "Varela Round", "Quicksand",
+             "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Courier New", monospace;
     font-size: 16px;
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
   html, body { margin: 0; padding: 0; }
 
   body {
-    background: var(--bg);
+    background: var(--white);
+    /* soft mower-stripe fairway backdrop — gentle, keeps the page airy */
     background-image:
-      radial-gradient(1200px 500px at 50% -10%, rgba(74,222,91,0.10), transparent 60%),
-      radial-gradient(900px 400px at 90% 110%, rgba(245,181,61,0.06), transparent 60%);
+      repeating-linear-gradient(115deg,
+        rgba(31,122,68,0.030) 0 46px,
+        rgba(76,175,80,0.055) 46px 92px);
     background-attachment: fixed;
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    font-family: var(--round);
     line-height: 1.45;
     min-height: 100vh;
     min-height: 100dvh;
     -webkit-font-smoothing: antialiased;
   }
 
-  h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+  h1, h2, h3 { margin: 0; font-weight: 800; letter-spacing: -0.015em; color: var(--forest); }
   p { margin: 0; }
   button { font-family: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; border-radius: 999px; }
+  ::selection { background: rgba(139,212,80,0.45); }
 
   /* ---------- App shell / layout ---------- */
-  .app {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-    min-height: 100dvh;
+  .app { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+
+  /* ---- The clubhouse: top bar ---- */
+  .topbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: calc(env(safe-area-inset-top) + 12px) 14px 14px;
+    position: sticky; top: 0; z-index: 30;
+    background: var(--white);
+    border-bottom: none;
+    box-shadow: 0 3px 14px rgba(11,93,51,0.07);
+  }
+  /* rounded green awning along the clubhouse eaves */
+  .topbar::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 7px;
+    background: repeating-linear-gradient(90deg,
+      var(--forest) 0 24px, var(--white) 24px 48px);
+  }
+  .topbar::before {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 7px; height: 2px;
+    background: var(--gold); opacity: 0.55;
   }
 
-  .topbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: calc(env(safe-area-inset-top) + 12px) 16px 12px;
-    position: sticky;
-    top: 0;
-    z-index: 30;
-    background: linear-gradient(180deg, rgba(12,22,17,0.98), rgba(12,22,17,0.86));
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--border);
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .crest { width: 40px; height: 40px; flex: none; filter: drop-shadow(0 2px 4px rgba(11,93,51,0.22)); }
+  .brand h1 { font-size: 1.22rem; }
+  .brand .tag {
+    color: var(--ink-faint); font-size: 0.64rem; font-weight: 800;
+    letter-spacing: 0.13em; text-transform: uppercase;
   }
-  .brand { display: flex; align-items: center; gap: 9px; }
-  .brand .logo {
-    width: 30px; height: 30px; border-radius: 8px;
-    background: radial-gradient(circle at 30% 30%, var(--accent), var(--accent-dim));
-    display: grid; place-items: center; color: var(--accent-ink);
-    font-size: 17px; box-shadow: 0 0 14px rgba(74,222,91,0.4);
-    flex: none;
-  }
-  .brand h1 { font-size: 1.15rem; }
-  .brand .tag { color: var(--text-faint); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
   .topbar .spacer { flex: 1; }
+
+  /* sync pill = a little flag. Flying when live, furled otherwise. */
   .sync {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 5px 10px; border-radius: 999px;
-    background: var(--surface); border: 1px solid var(--border);
-    font-size: 0.72rem; font-weight: 600; color: var(--text-dim);
-    white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 13px; border-radius: 999px;
+    background: var(--ivory); border: 2px solid var(--line);
+    font-size: 0.72rem; font-weight: 800; color: var(--ink-soft);
+    white-space: nowrap; letter-spacing: 0.01em;
   }
-  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); flex: none; }
-  .sync.pulse .sync-dot { animation: syncpulse 1s ease-in-out infinite; }
-  @keyframes syncpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-  /* Hide the label on very narrow phones, keep the dot */
-  @media (max-width: 400px) { .sync .sync-text { display: none; } }
+  .sync-flag { width: 15px; height: 16px; flex: none; display: block; }
+  .sync-flag .pennant { transform-origin: 3px 3px; }
+  .sync[data-state="synced"] { background: rgba(76,175,80,0.14); border-color: rgba(31,122,68,0.35); color: var(--forest); }
+  .sync[data-state="synced"] .pennant { animation: wave 2.6s ease-in-out infinite; }
+  .sync[data-state="offline"] { background: rgba(214,69,65,0.10); border-color: rgba(214,69,65,0.35); color: #96322f; }
+  .sync[data-state="offline"] .pennant { transform: scaleX(0.28); }
+  .sync[data-state="saving"] { background: rgba(201,162,39,0.14); border-color: rgba(201,162,39,0.45); color: #7d6413; }
+  .sync[data-state="saving"] .pennant,
+  .sync[data-state="connecting"] .pennant { animation: wave 0.9s ease-in-out infinite; }
+  @keyframes wave { 0%,100% { transform: rotate(-5deg); } 50% { transform: rotate(7deg); } }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); flex: none; }
+  @media (max-width: 430px) { .sync .sync-text { display: none; } .sync { padding: 7px 9px; } }
+
   .icon-btn {
     height: var(--tap); min-width: var(--tap); padding: 0 12px;
-    border-radius: var(--radius-sm);
-    background: var(--surface); color: var(--text-dim);
-    border: 1px solid var(--border);
-    font-size: 0.8rem; font-weight: 600;
-    display: inline-flex; align-items: center; gap: 6px;
+    border-radius: 999px;
+    background: var(--white); color: var(--forest);
+    border: 2px solid var(--line);
+    font-size: 0.78rem; font-weight: 800;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    transition: background 0.15s ease, transform 0.12s ease;
   }
-  .icon-btn:active { background: var(--surface-2); }
+  .icon-btn:hover { background: rgba(76,175,80,0.10); }
+  .icon-btn:active { background: rgba(31,122,68,0.16); transform: translateY(1px); }
+  .icon-btn svg { width: 17px; height: 17px; flex: none; }
+  @media (max-width: 560px) { .icon-btn .lbl { display: none; } .icon-btn { padding: 0 10px; } }
 
-  /* Desktop side nav container */
   .shell { display: flex; flex: 1; }
-
   .sidenav { display: none; }
 
   .main {
-    flex: 1;
-    width: 100%;
-    max-width: 780px;
-    margin: 0 auto;
-    padding: 16px 16px calc(var(--nav-h) + env(safe-area-inset-bottom) + 24px);
+    flex: 1; width: 100%; max-width: 780px; margin: 0 auto;
+    padding: 18px 16px calc(var(--nav-h) + env(safe-area-inset-bottom) + 96px);
   }
 
-  .view { animation: fade 0.18s ease; }
-  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .view { animation: fade 0.22s cubic-bezier(.22,.9,.3,1); }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-  .view-head { margin-bottom: 14px; }
-  .view-head h2 { font-size: 1.5rem; }
-  .view-head .sub { color: var(--text-dim); font-size: 0.88rem; margin-top: 2px; }
+  /* view heading: course name eyebrow over the functional title */
+  .view-head { margin-bottom: 16px; }
+  .view-head .eyebrow {
+    display: inline-block; font-size: 0.66rem; font-weight: 900;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold);
+    margin-bottom: 3px;
+  }
+  .view-head h2 { font-size: 1.62rem; }
+  .view-head .sub { color: var(--ink-soft); font-size: 0.9rem; margin-top: 2px; }
 
   /* ---------- Cards & sections ---------- */
   .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
+    background: var(--white);
+    border: 2px solid var(--line-soft);
     border-radius: var(--radius);
-    padding: 16px;
+    padding: 17px;
     margin-bottom: 14px;
+    box-shadow: var(--shadow-soft);
   }
-  .card.raised { box-shadow: var(--shadow); }
+  .card.raised { box-shadow: var(--shadow); border-color: var(--line); }
+  /* scorecard treatment — ivory paper with a forest header band */
+  .card.scorecard { background: var(--ivory); border-color: var(--line); }
   .section-label {
-    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
-    color: var(--text-faint); font-weight: 700; margin-bottom: 10px;
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.13em;
+    color: var(--ink-faint); font-weight: 900; margin-bottom: 11px;
   }
 
-  /* ---------- Buttons ---------- */
+  /* ---------- Buttons (pills) ---------- */
   .btn {
-    height: var(--tap); padding: 0 18px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: var(--surface-2); color: var(--text);
-    font-size: 0.95rem; font-weight: 600;
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  }
-  .btn:active { transform: translateY(1px); }
-  .btn.primary {
-    background: linear-gradient(180deg, var(--accent), var(--accent-dim));
-    color: var(--accent-ink); border-color: transparent;
-    box-shadow: 0 4px 16px rgba(74,222,91,0.28);
-  }
-  .btn.ghost { background: transparent; }
-  .btn.danger { background: transparent; color: var(--danger); border-color: rgba(239,107,92,0.4); }
-  .btn.block { width: 100%; }
-  .btn.sm { height: 38px; padding: 0 12px; font-size: 0.85rem; }
-
-  /* ---------- Chips ---------- */
-  .chip {
-    min-height: var(--tap); padding: 0 16px;
+    height: var(--tap); padding: 0 20px;
     border-radius: 999px;
-    border: 1.5px solid var(--border);
-    background: var(--surface); color: var(--text-dim);
-    font-size: 0.92rem; font-weight: 600;
-    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    border: 2px solid var(--line);
+    background: var(--white); color: var(--forest);
+    font-size: 0.95rem; font-weight: 800;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    box-shadow: var(--shadow-soft);
+    transition: transform 0.12s ease, background 0.15s ease, box-shadow 0.15s ease;
   }
+  .btn svg { width: 18px; height: 18px; flex: none; }
+  .btn:active { transform: translateY(2px); box-shadow: 0 1px 4px rgba(11,93,51,0.12); }
+  .btn.primary {
+    background: linear-gradient(180deg, var(--green), var(--forest));
+    color: var(--white); border-color: transparent;
+    box-shadow: 0 6px 16px rgba(11,93,51,0.28);
+  }
+  .btn.primary:hover { background: linear-gradient(180deg, #24894d, #0d6a3a); }
+  .btn.gold { background: var(--gold); color: #3B2E05; border-color: transparent; }
+  .btn.ghost { background: var(--white); }
+  .btn.ghost:hover { background: rgba(76,175,80,0.10); }
+  .btn.danger { background: var(--white); color: #B23A36; border-color: rgba(214,69,65,0.38); }
+  .btn.danger:hover { background: rgba(214,69,65,0.08); }
+  .btn.block { width: 100%; }
+  .btn.sm { height: 38px; padding: 0 14px; font-size: 0.84rem; }
+
+  /* ---------- Chips (the bag) ---------- */
+  .chip {
+    min-height: var(--tap); padding: 0 17px;
+    border-radius: 999px;
+    border: 2px solid var(--line);
+    background: var(--white); color: var(--ink-soft);
+    font-size: 0.93rem; font-weight: 800;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    transition: transform 0.12s ease, background 0.15s ease;
+  }
+  .chip:active { transform: scale(0.97); }
   .chip.on {
-    background: rgba(74,222,91,0.16); color: var(--accent);
-    border-color: var(--accent);
+    background: linear-gradient(180deg, rgba(139,212,80,0.28), rgba(76,175,80,0.20));
+    color: var(--forest); border-color: var(--green);
   }
   .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
-
-  .chip.sm { min-height: 36px; padding: 0 12px; font-size: 0.82rem; }
-  .chip.amber.on { background: rgba(245,181,61,0.16); color: var(--amber); border-color: var(--amber); }
+  .chip.sm { min-height: 38px; padding: 0 13px; font-size: 0.83rem; }
 
   /* ---------- Inputs ---------- */
-  label.fld { display: block; margin-bottom: 12px; }
-  label.fld > span { display: block; font-size: 0.78rem; color: var(--text-dim); margin-bottom: 5px; font-weight: 600; }
+  label.fld { display: block; margin-bottom: 13px; }
+  label.fld > span { display: block; font-size: 0.72rem; color: var(--ink-soft); margin-bottom: 6px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
   input[type=text], input[type=date], input[type=password], textarea, select {
     width: 100%; min-height: var(--tap);
-    background: var(--bg-2); color: var(--text);
-    border: 1.5px solid var(--border); border-radius: var(--radius-sm);
-    padding: 10px 12px; font-size: 1rem; font-family: inherit;
+    background: var(--white); color: var(--ink);
+    border: 2px solid var(--line); border-radius: 999px;
+    padding: 11px 17px; font-size: 1rem; font-family: inherit;
   }
-  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
-  textarea { resize: vertical; min-height: 60px; }
-  ::placeholder { color: var(--text-faint); }
+  textarea { border-radius: var(--radius-sm); resize: vertical; min-height: 66px; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(76,175,80,0.18); }
+  ::placeholder { color: var(--ink-faint); }
 
   /* Date input — normalize iOS Safari, which otherwise centers the value
      and hides the picker affordance. Left-align to match other fields. */
   input[type=date] {
-    -webkit-appearance: none;
-    appearance: none;
-    text-align: left;
-    display: flex;               /* keeps the value vertically centered on iOS */
-    align-items: center;
-    line-height: 1.2;
+    -webkit-appearance: none; appearance: none;
+    text-align: left; display: flex; align-items: center; line-height: 1.2;
   }
   input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; }
   input[type=date]::-webkit-calendar-picker-indicator {
-    margin-left: auto;           /* push the picker icon to the right edge */
-    filter: invert(0.85);        /* light icon on the dark field */
-    opacity: 0.75;
-    cursor: pointer;
+    margin-left: auto; opacity: 0.55; cursor: pointer;
   }
 
   /* ---------- Club group mini panel ---------- */
   .group-block { margin-bottom: 10px; }
   .group-panel {
-    margin-top: 8px; padding: 12px;
-    background: var(--bg-2); border: 1px solid var(--border);
+    margin-top: 9px; padding: 14px;
+    background: var(--ivory);
+    border: 2px dashed rgba(11,93,51,0.18);
     border-radius: var(--radius-sm);
+    animation: unfurl 0.22s cubic-bezier(.22,.9,.3,1);
   }
-  .group-panel .lbl { font-size: 0.74rem; color: var(--text-dim); font-weight: 600; margin-bottom: 7px; }
-  .contact-dots { display: flex; gap: 8px; margin-bottom: 12px; }
+  @keyframes unfurl { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .group-panel .lbl { font-size: 0.71rem; color: var(--ink-soft); font-weight: 800; margin-bottom: 8px; letter-spacing: 0.03em; }
+  .contact-dots { display: flex; gap: 8px; margin-bottom: 14px; }
+  /* contact 1–5 = a rounded power meter of dimpled balls */
   .dot {
     width: var(--tap); height: var(--tap); border-radius: 50%;
-    border: 2px solid var(--border); background: var(--surface);
-    color: var(--text-dim); font-weight: 700; font-size: 0.95rem;
-    display: grid; place-items: center;
+    border: 2px solid var(--line); background: var(--white);
+    color: var(--ink-faint); font-weight: 700; font-size: 0.98rem;
+    font-family: var(--mono);
+    display: grid; place-items: center; position: relative;
+    transition: transform 0.14s cubic-bezier(.3,1.4,.5,1), background 0.15s ease;
   }
-  .dot.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); box-shadow: 0 0 10px rgba(74,222,91,0.4); }
+  .dot::after {
+    content: ""; position: absolute; inset: 4px; border-radius: 50%;
+    background-image: radial-gradient(rgba(11,93,51,0.10) 1.1px, transparent 1.5px);
+    background-size: 8px 8px; pointer-events: none;
+  }
+  .dot.on {
+    background: radial-gradient(circle at 35% 30%, var(--lime), var(--green) 78%);
+    color: var(--white); border-color: var(--forest);
+    box-shadow: 0 3px 9px rgba(11,93,51,0.28);
+    transform: translateY(-2px);
+  }
+  .dot.on::after { background-image: radial-gradient(rgba(255,255,255,0.22) 1.1px, transparent 1.5px); }
 
-  /* ---------- Homework checkboxes ---------- */
+  /* ---------- Homework checkboxes (pencil ticks) ---------- */
   .hw-item {
     display: flex; align-items: center; gap: 12px;
-    min-height: var(--tap); padding: 8px 12px;
-    border: 1.5px solid var(--border); border-radius: var(--radius-sm);
-    background: var(--surface); margin-bottom: 8px;
+    min-height: var(--tap); padding: 9px 14px;
+    border: 2px solid var(--line); border-radius: 999px;
+    background: var(--white); margin-bottom: 9px;
+    transition: background 0.15s ease, border-color 0.15s ease;
   }
-  .hw-item.on { border-color: var(--accent); background: rgba(74,222,91,0.10); }
+  .hw-item.on { border-color: var(--green); background: rgba(139,212,80,0.16); }
   .hw-box {
-    width: 26px; height: 26px; border-radius: 7px; flex: none;
-    border: 2px solid var(--border); background: var(--bg-2);
-    display: grid; place-items: center; color: var(--accent-ink);
-    font-size: 16px; font-weight: 900;
+    width: 28px; height: 28px; border-radius: 50%; flex: none;
+    border: 2px solid var(--line); background: var(--ivory);
+    display: grid; place-items: center;
   }
-  .hw-item.on .hw-box { background: var(--accent); border-color: var(--accent); }
-  .hw-item .hw-name { font-weight: 600; }
+  .hw-item.on .hw-box { background: var(--green); border-color: var(--forest); }
+  .hw-box svg { width: 17px; height: 17px; }
+  .hw-box svg path {
+    fill: none; stroke: var(--white); stroke-width: 3.4;
+    stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 26; stroke-dashoffset: 26;
+  }
+  .hw-item.on .hw-box svg path { animation: tick 0.34s cubic-bezier(.3,.9,.4,1) forwards; }
+  @keyframes tick { to { stroke-dashoffset: 0; } }
+  .hw-item .hw-name { font-weight: 700; }
 
   /* ---------- Sticky save bar ---------- */
   .savebar {
     position: fixed; left: 0; right: 0;
     bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
-    padding: 10px 16px calc(10px);
-    background: linear-gradient(180deg, rgba(12,22,17,0), rgba(12,22,17,0.95) 30%);
+    padding: 14px 16px 14px;
+    background: linear-gradient(180deg, rgba(251,251,244,0), var(--white) 42%);
     z-index: 25;
     max-width: 780px; margin: 0 auto;
   }
-  .savebar .btn { height: 52px; font-size: 1.05rem; }
+  .savebar .btn { height: 54px; font-size: 1.06rem; }
 
-  /* ---------- Bottom tab nav ---------- */
+  /* ---------- Bottom tab nav = yardage posts ---------- */
   .tabnav {
     position: fixed; left: 0; right: 0; bottom: 0;
     height: calc(var(--nav-h) + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
-    display: flex; z-index: 40;
-    background: rgba(10,18,14,0.97);
-    backdrop-filter: blur(10px);
-    border-top: 1px solid var(--border);
+    padding: 7px 8px env(safe-area-inset-bottom);
+    display: flex; gap: 2px; z-index: 40;
+    background: var(--forest);
+    border-radius: 26px 26px 0 0;
+    box-shadow: 0 -6px 20px rgba(10,61,36,0.22);
   }
   .tabnav button {
-    flex: 1; background: none; border: none; color: var(--text-faint);
+    flex: 1; background: none; border: none; color: rgba(251,251,244,0.72);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 3px; font-size: 0.68rem; font-weight: 600; padding: 6px 0;
+    gap: 3px; font-size: 0.66rem; font-weight: 800; padding: 5px 0;
+    border-radius: 20px; letter-spacing: 0.02em;
+    transition: background 0.18s ease, color 0.18s ease;
   }
-  .tabnav button .ic { font-size: 1.25rem; line-height: 1; }
-  .tabnav button.active { color: var(--accent); }
-  .tabnav button.active .ic { filter: drop-shadow(0 0 6px rgba(74,222,91,0.5)); }
+  .tabnav button .ic { display: block; width: 23px; height: 23px; }
+  .tabnav button .ic svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .tabnav button.active { background: var(--lime); color: var(--rough); }
 
-  /* ---------- Lists / rows ---------- */
+  /* ---------- Lists / rows (stacked scorecards) ---------- */
   .row-item {
     display: flex; align-items: flex-start; gap: 12px;
-    padding: 14px; border-radius: var(--radius);
-    background: var(--surface); border: 1px solid var(--border);
-    margin-bottom: 10px;
+    padding: 15px; border-radius: var(--radius);
+    background: var(--ivory); border: 2px solid var(--line);
+    margin-bottom: 11px; box-shadow: var(--shadow-soft);
   }
-  .row-item.active-lesson { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .row-item.active-lesson { border-color: var(--green); box-shadow: 0 0 0 3px rgba(139,212,80,0.28), var(--shadow-soft); }
   .row-item .grow { flex: 1; min-width: 0; }
+  .row-item strong { color: var(--forest); font-size: 1.02rem; }
   .pill {
-    display: inline-block; font-size: 0.66rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.05em;
-    padding: 3px 8px; border-radius: 999px;
-    background: rgba(74,222,91,0.18); color: var(--accent);
+    display: inline-block; font-size: 0.63rem; font-weight: 900;
+    text-transform: uppercase; letter-spacing: 0.09em;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--green); color: var(--white);
   }
-  .pill.grey { background: var(--surface-2); color: var(--text-dim); }
-  .meta { color: var(--text-dim); font-size: 0.82rem; }
+  .pill.grey { background: var(--sand); color: #6B5A1F; }
+  .meta { color: var(--ink-soft); font-size: 0.84rem; }
   .drill-tag {
-    display: inline-block; font-size: 0.78rem; font-weight: 600;
-    padding: 4px 10px; border-radius: 999px; margin: 3px 4px 0 0;
-    background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border);
+    display: inline-block; font-size: 0.78rem; font-weight: 700;
+    padding: 5px 12px; border-radius: 999px; margin: 3px 4px 0 0;
+    background: var(--white); color: var(--ink-soft); border: 2px solid var(--line-soft);
   }
 
   /* ---------- Segmented control (Log: New / History) ---------- */
   .seg {
-    display: flex; gap: 4px; margin-bottom: 14px;
-    background: var(--bg-2); border: 1px solid var(--border);
-    border-radius: 12px; padding: 4px;
+    display: flex; gap: 4px; margin-bottom: 15px;
+    background: var(--ivory); border: 2px solid var(--line-soft);
+    border-radius: 999px; padding: 5px;
   }
   .seg button {
-    flex: 1; min-height: 40px; border: none; border-radius: 9px;
-    background: transparent; color: var(--text-dim);
-    font-weight: 700; font-size: 0.9rem;
+    flex: 1; min-height: 42px; border: none; border-radius: 999px;
+    background: transparent; color: var(--ink-soft);
+    font-weight: 800; font-size: 0.9rem;
+    transition: background 0.18s ease, color 0.18s ease;
   }
   .seg button.on {
-    background: var(--surface-2); color: var(--accent);
-    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    background: linear-gradient(180deg, var(--green), var(--forest));
+    color: var(--white); box-shadow: 0 3px 9px rgba(11,93,51,0.24);
   }
 
   /* ---------- Entry history rows ---------- */
-  .hist-cg { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 0; font-size: 0.9rem; }
-  .tag-num { font-size: 0.74rem; color: var(--text-dim); background: var(--bg-2); border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px; }
-  .tag-fl { font-size: 0.78rem; color: var(--amber); font-weight: 600; }
-
-  /* ---------- Empty state ---------- */
-  .empty {
-    text-align: center; padding: 40px 20px; color: var(--text-dim);
+  .hist-cg {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 7px 0; font-size: 0.92rem;
+    border-bottom: 1px dashed rgba(11,93,51,0.18);
   }
-  .empty .big { font-size: 2.6rem; margin-bottom: 10px; }
-  .empty h3 { color: var(--text); margin-bottom: 6px; }
-  .empty p { max-width: 320px; margin: 0 auto 16px; font-size: 0.9rem; }
+  .hist-cg:last-child { border-bottom: none; }
+  .tag-num {
+    font-size: 0.74rem; color: var(--forest); font-family: var(--mono); font-weight: 700;
+    background: var(--white); border: 2px solid var(--line-soft);
+    padding: 2px 9px; border-radius: 999px;
+  }
+  .tag-fl { font-size: 0.78rem; color: #7D6413; font-weight: 800; }
+
+  /* ---------- Empty state (a hazard) ---------- */
+  .empty { text-align: center; padding: 34px 20px 40px; color: var(--ink-soft); }
+  .empty .big {
+    width: 108px; height: 76px; margin: 0 auto 14px;
+    display: grid; place-items: center; font-size: 2.4rem;
+    background: var(--sand);
+    border-radius: 46% 54% 60% 40% / 52% 46% 54% 48%;
+    box-shadow: inset 0 4px 10px rgba(0,0,0,0.10);
+  }
+  .empty h3 { margin-bottom: 6px; }
+  .empty p { max-width: 330px; margin: 0 auto 16px; font-size: 0.92rem; }
 
   /* ---------- Stats grid (Prep) ---------- */
   .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .stat {
-    background: var(--bg-2); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); padding: 12px 14px;
+    background: var(--white); border: 2px solid var(--line-soft);
+    border-radius: var(--radius-sm); padding: 13px 15px; text-align: left;
   }
-  .stat .num { font-size: 1.7rem; font-weight: 800; color: var(--accent); line-height: 1.1; }
-  .stat .lbl { font-size: 0.74rem; color: var(--text-dim); margin-top: 2px; font-weight: 600; }
+  .stat .num { font-size: 1.8rem; font-weight: 800; color: var(--green); line-height: 1.05; font-family: var(--mono); }
+  .stat .lbl { font-size: 0.7rem; color: var(--ink-soft); margin-top: 3px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
 
-  .kv { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .kv {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px dashed rgba(11,93,51,0.20);
+  }
   .kv:last-child { border-bottom: none; }
-  .kv .k { font-weight: 600; }
-  .kv .v { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
-  .kv .v.grey { color: var(--text-dim); }
+  .kv .k { font-weight: 700; }
+  .kv .v { color: var(--green); font-weight: 800; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .kv .v.grey { color: var(--ink-soft); }
 
   /* progress bar */
-  .bar-track { height: 8px; border-radius: 999px; background: var(--bg-2); overflow: hidden; margin-top: 6px; border: 1px solid var(--border); }
-  .bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); border-radius: 999px; }
+  .bar-track {
+    height: 12px; border-radius: 999px; background: var(--ivory);
+    overflow: hidden; margin-top: 7px; border: 2px solid var(--line-soft);
+  }
+  .bar-fill {
+    height: 100%; border-radius: 999px;
+    background: repeating-linear-gradient(115deg, var(--fairway) 0 9px, var(--green) 9px 18px);
+  }
 
-  .note-line { padding: 10px 12px; background: var(--bg-2); border-radius: var(--radius-sm); margin-bottom: 8px; border: 1px solid var(--border); }
-  .note-line .d { font-size: 0.72rem; color: var(--text-faint); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+  .note-line {
+    padding: 11px 14px; background: var(--white); border-radius: var(--radius-sm);
+    margin-bottom: 9px; border: 2px solid var(--line-soft); font-size: 0.94rem;
+  }
+  .note-line .d { font-size: 0.68rem; color: var(--gold); font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 2px; }
 
-  /* ---------- Terms / glossary ---------- */
-  .term-row { padding: 11px 0; border-bottom: 1px solid var(--border); }
+  /* ---------- Terms / rulebook ---------- */
+  .term-row { padding: 12px 0; border-bottom: 1px dashed rgba(11,93,51,0.18); }
   .term-row:last-child { border-bottom: none; padding-bottom: 0; }
   .term-row:first-of-type { padding-top: 2px; }
   .term-head { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
-  .term-name { font-weight: 700; font-size: 1.02rem; color: var(--text); }
-  .term-def { color: var(--text-dim); font-size: 0.9rem; line-height: 1.5; }
+  .term-name { font-weight: 800; font-size: 1.02rem; color: var(--forest); }
+  .term-def { color: var(--ink-soft); font-size: 0.91rem; line-height: 1.55; }
 
   /* ---------- Charts ---------- */
   .chart-wrap { width: 100%; overflow-x: auto; }
   svg { display: block; width: 100%; height: auto; }
-  .legend { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 10px; font-size: 0.78rem; color: var(--text-dim); }
-  .legend .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 9px 14px; margin-top: 12px; font-size: 0.78rem; color: var(--ink-soft); font-weight: 700; }
+  .legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -2px; }
 
   /* ---------- Drill form rows ---------- */
-  .drill-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+  .drill-row { display: flex; gap: 8px; margin-bottom: 9px; align-items: center; }
   .drill-row input { flex: 1; }
-  .drill-row .rm { flex: none; width: 40px; height: 40px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--danger); font-size: 1.3rem; }
+  .drill-row .rm {
+    flex: none; width: 42px; height: 42px; border-radius: 50%;
+    border: 2px solid rgba(214,69,65,0.35); background: var(--white);
+    color: #B23A36; font-size: 1.3rem; font-weight: 800; line-height: 1;
+  }
 
   /* ---------- Modal ---------- */
   .modal-back {
     position: fixed; inset: 0; z-index: 60;
-    background: rgba(4,10,7,0.7); backdrop-filter: blur(3px);
-    display: flex; align-items: flex-end; justify-content: center;
-    padding: 0;
+    background: rgba(10,61,36,0.42); backdrop-filter: blur(3px);
+    display: flex; align-items: flex-end; justify-content: center; padding: 0;
   }
   .modal {
-    background: var(--bg-2); width: 100%; max-width: 560px;
-    border-radius: 20px 20px 0 0; border: 1px solid var(--border);
-    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+    background: var(--white); width: 100%; max-width: 560px;
+    border-radius: 30px 30px 0 0; border: none;
+    padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
     max-height: 92vh; overflow-y: auto;
-    box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
-    animation: slideup 0.22s ease;
+    box-shadow: 0 -14px 44px rgba(10,61,36,0.30);
+    animation: slideup 0.24s cubic-bezier(.22,.9,.3,1);
   }
-  @keyframes slideup { from { transform: translateY(30px); opacity: 0.6; } to { transform: none; opacity: 1; } }
-  .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-  .modal-head h3 { font-size: 1.2rem; }
-  .modal-actions { display: flex; gap: 10px; margin-top: 8px; }
+  @keyframes slideup { from { transform: translateY(34px); opacity: 0.5; } to { transform: none; opacity: 1; } }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .modal-head h3 { font-size: 1.24rem; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 12px; }
   .modal-actions .btn { flex: 1; }
 
-  /* ---------- Toast ---------- */
+  /* ---------- Toast (the putt drops) ---------- */
   .toast {
     position: fixed; left: 50%; transform: translateX(-50%);
-    bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 20px);
-    background: var(--accent); color: var(--accent-ink);
-    padding: 12px 22px; border-radius: 999px; font-weight: 700;
-    z-index: 80; box-shadow: 0 6px 24px rgba(74,222,91,0.4);
-    animation: toastin 0.25s ease;
+    bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 24px);
+    background: var(--forest); color: var(--white);
+    padding: 13px 22px; border-radius: 999px; font-weight: 800;
+    z-index: 80; box-shadow: 0 8px 24px rgba(10,61,36,0.34);
+    display: flex; align-items: center; gap: 9px;
+    animation: toastin 0.26s cubic-bezier(.22,.9,.3,1);
+    max-width: calc(100vw - 32px);
   }
-  @keyframes toastin { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  @keyframes toastin { from { opacity: 0; transform: translate(-50%, 14px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  .toast .ball {
+    width: 18px; height: 18px; border-radius: 50%; flex: none;
+    background: radial-gradient(circle at 36% 30%, #ffffff, #DCE6DC);
+    box-shadow: inset -2px -3px 5px rgba(0,0,0,0.16);
+    animation: settle 0.62s cubic-bezier(.3,1.5,.5,1);
+  }
+  @keyframes settle {
+    0% { transform: translateY(-22px) scale(0.8); }
+    55% { transform: translateY(0) scale(1.08, 0.9); }
+    75% { transform: translateY(-5px) scale(0.98, 1.03); }
+    100% { transform: translateY(0) scale(1); }
+  }
 
-  /* ---------- Password lock ---------- */
+  /* ---------- Password lock = the front gate ---------- */
   .lock {
     position: fixed; inset: 0; z-index: 100;
-    display: flex; align-items: center; justify-content: center;
-    padding: 24px;
-    background: var(--bg);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: var(--white);
     background-image:
-      radial-gradient(1200px 500px at 50% -10%, rgba(74,222,91,0.12), transparent 60%),
-      radial-gradient(900px 400px at 90% 110%, rgba(245,181,61,0.06), transparent 60%);
+      radial-gradient(90% 55% at 50% 118%, rgba(31,122,68,0.30), transparent 62%),
+      repeating-linear-gradient(115deg, rgba(31,122,68,0.035) 0 46px, rgba(76,175,80,0.065) 46px 92px);
   }
   .lock-card {
-    width: 100%; max-width: 360px; text-align: center;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 20px; padding: 34px 24px; box-shadow: var(--shadow);
+    width: 100%; max-width: 372px; text-align: center;
+    background: var(--white); border: 2px solid var(--line);
+    border-radius: 30px; padding: 32px 24px 26px; box-shadow: var(--shadow);
+    position: relative; overflow: hidden;
   }
-  .lock-logo {
-    width: 64px; height: 64px; border-radius: 16px; margin: 0 auto 16px;
-    display: grid; place-items: center; font-size: 34px;
-    background: radial-gradient(circle at 30% 30%, var(--accent), var(--accent-dim));
-    box-shadow: 0 0 26px rgba(74,222,91,0.45);
+  .lock-card::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 9px;
+    background: repeating-linear-gradient(90deg, var(--forest) 0 22px, var(--white) 22px 44px);
   }
-  .lock-card h2 { font-size: 1.5rem; margin-bottom: 4px; }
-  .lock-card input { margin-top: 18px; text-align: center; font-size: 1.1rem; letter-spacing: 0.04em; }
-  .lock-error { color: var(--danger); font-size: 0.85rem; min-height: 1.2em; margin-top: 10px; font-weight: 600; }
-  .lock-card .btn { margin-top: 14px; height: 50px; }
+  .lock-logo { width: 82px; height: 82px; margin: 8px auto 14px; display: block; filter: drop-shadow(0 4px 10px rgba(11,93,51,0.22)); }
+  .lock-card .eyebrow { display: block; font-size: 0.64rem; font-weight: 900; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); margin-bottom: 4px; }
+  .lock-card h2 { font-size: 1.6rem; margin-bottom: 4px; }
+  .lock-card input { margin-top: 18px; text-align: center; font-size: 1.08rem; letter-spacing: 0.05em; }
+  .lock-error { color: #B23A36; font-size: 0.86rem; min-height: 1.2em; margin-top: 10px; font-weight: 800; }
+  .lock-card .btn { margin-top: 14px; height: 52px; }
 
   .hidden { display: none !important; }
   .mt8 { margin-top: 8px; } .mt12 { margin-top: 12px; } .mt16 { margin-top: 16px; }
-  .muted { color: var(--text-dim); font-size: 0.85rem; }
-  .link { color: var(--accent); font-weight: 600; text-decoration: underline; background: none; border: none; padding: 0; font-size: inherit; }
+  .muted { color: var(--ink-soft); font-size: 0.88rem; }
+  .link { color: var(--green); font-weight: 800; text-decoration: underline; background: none; border: none; padding: 0; font-size: inherit; cursor: pointer; }
 
   /* ============================================================
-     Desktop layout
+     Desktop layout — clubhouse with a yardage-post side nav
      ============================================================ */
   @media (min-width: 860px) {
     .tabnav { display: none; }
     .app { flex-direction: column; }
-    .shell { max-width: 1100px; margin: 0 auto; width: 100%; }
+    .shell { max-width: 1120px; margin: 0 auto; width: 100%; }
     .sidenav {
-      display: flex; flex-direction: column; gap: 4px;
-      width: 210px; flex: none; padding: 18px 12px;
-      position: sticky; top: 72px; align-self: flex-start;
+      display: flex; flex-direction: column; gap: 6px;
+      width: 224px; flex: none; padding: 22px 14px;
+      position: sticky; top: 84px; align-self: flex-start;
     }
     .sidenav button {
       display: flex; align-items: center; gap: 12px;
-      height: 48px; padding: 0 16px; border-radius: var(--radius-sm);
-      background: none; border: none; color: var(--text-dim);
-      font-size: 0.98rem; font-weight: 600; text-align: left; width: 100%;
+      height: 50px; padding: 0 18px; border-radius: 999px;
+      background: none; border: 2px solid transparent; color: var(--ink-soft);
+      font-size: 0.98rem; font-weight: 800; text-align: left; width: 100%;
+      transition: background 0.16s ease, color 0.16s ease;
     }
-    .sidenav button .ic { font-size: 1.2rem; }
-    .sidenav button:hover { background: var(--surface); color: var(--text); }
-    .sidenav button.active { background: rgba(74,222,91,0.14); color: var(--accent); }
-    .main {
-      max-width: none; margin: 0;
-      padding: 24px 28px 48px;
+    .sidenav button .ic { display: block; width: 21px; height: 21px; flex: none; }
+    .sidenav button .ic svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .sidenav button:hover { background: var(--ivory); color: var(--forest); }
+    .sidenav button.active {
+      background: linear-gradient(180deg, var(--green), var(--forest));
+      color: var(--white); box-shadow: 0 5px 14px rgba(11,93,51,0.26);
     }
-    .savebar {
-      position: static; padding: 4px 0 0; margin: 0;
-      background: none; max-width: none;
-    }
-    .savebar .btn { max-width: 320px; }
+    .main { max-width: none; margin: 0; padding: 26px 30px 56px; }
+    .savebar { position: static; padding: 8px 0 0; margin: 0; background: none; max-width: none; }
+    .savebar .btn { max-width: 330px; }
     .stat-grid { grid-template-columns: repeat(4, 1fr); }
     .modal-back { align-items: center; padding: 20px; }
-    .modal { border-radius: 20px; }
+    .modal { border-radius: 30px; }
+    .toast { bottom: 30px; }
   }
 
   @media (min-width: 560px) and (max-width: 859px) {
     .stat-grid { grid-template-columns: repeat(4, 1fr); }
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+    .hw-box svg path { stroke-dashoffset: 26; }
+    .hw-item.on .hw-box svg path { stroke-dashoffset: 0; }
+  }
 </style>
 </head>
 <body>
 <div class="app">
-  <!-- Top bar -->
+  <!-- Top bar — the clubhouse -->
   <header class="topbar">
     <div class="brand">
-      <div class="logo">⛳</div>
+      <svg class="crest" viewBox="0 0 64 64" aria-hidden="true">
+        <defs>
+          <clipPath id="crestClip"><circle cx="32" cy="32" r="26"/></clipPath>
+          <radialGradient id="crestSky" cx="32%" cy="26%" r="82%">
+            <stop offset="0" stop-color="#8BD450"/><stop offset="1" stop-color="#1F7A44"/>
+          </radialGradient>
+        </defs>
+        <circle cx="32" cy="32" r="30" fill="#F4F1E4"/>
+        <g clip-path="url(#crestClip)">
+          <circle cx="32" cy="32" r="26" fill="url(#crestSky)"/>
+          <ellipse cx="30" cy="56" rx="34" ry="17" fill="#0B5D33"/>
+          <path d="M25 18 V47" stroke="#FBFBF4" stroke-width="3" stroke-linecap="round"/>
+          <path d="M26.5 18.5 q10 1.6 15 6 -6.5 3.4 -15 4.8 z" fill="#D64541"/>
+          <circle cx="40" cy="44" r="4.6" fill="#FBFBF4"/>
+        </g>
+        <circle cx="32" cy="32" r="30" fill="none" stroke="#C9A227" stroke-width="3.2"/>
+      </svg>
       <div>
         <h1>RangeLog</h1>
         <div class="tag">Range &amp; Lesson Tracker</div>
       </div>
     </div>
     <div class="spacer"></div>
-    <div id="syncStatus" class="sync" title="Live sync status">
+    <div id="syncStatus" class="sync" data-state="connecting" title="Live sync status">
+      <svg class="sync-flag" viewBox="0 0 16 18" aria-hidden="true">
+        <path d="M3 2.5 V16" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+        <path class="pennant" d="M4 3 q6 0.8 9 3.4 -4 2 -9 2.8 z" fill="currentColor"/>
+      </svg>
       <span class="sync-dot"></span><span class="sync-text">Connecting…</span>
     </div>
-    <button class="icon-btn" id="btnExport" title="Export data">⬇ Export</button>
-    <button class="icon-btn" id="btnImport" title="Import data">⬆ Import</button>
+    <button class="icon-btn" id="btnExport" title="Export data">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7.5 11.5 12 16l4.5-4.5"/><path d="M5 19h14"/></svg>
+      <span class="lbl">Export</span>
+    </button>
+    <button class="icon-btn" id="btnImport" title="Import data">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V5"/><path d="M7.5 9.5 12 5l4.5 4.5"/><path d="M5 19h14"/></svg>
+      <span class="lbl">Import</span>
+    </button>
     <input type="file" id="importFile" accept="application/json,.json" class="hidden">
   </header>
 
   <div class="shell">
     <!-- Desktop side nav -->
     <nav class="sidenav" id="sidenav">
-      <button data-view="log"><span class="ic">🎯</span> Log</button>
-      <button data-view="lessons"><span class="ic">📘</span> Lessons</button>
-      <button data-view="prep"><span class="ic">📋</span> Prep</button>
-      <button data-view="trends"><span class="ic">📈</span> Trends</button>
-      <button data-view="terms"><span class="ic">📖</span> Terms</button>
+      <button data-view="log"><span class="ic"><svg viewBox="0 0 24 24"><path d="M6 21V4"/><path d="M6 5c4-2.2 8 2 12-.2v7c-4 2.2-8-2-12 .2"/></svg></span> Log</button>
+      <button data-view="lessons"><span class="ic"><svg viewBox="0 0 24 24"><path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v14H7.5A2.5 2.5 0 0 0 5 19.5z"/><path d="M5 19.5A2.5 2.5 0 0 1 7.5 17H19v4H7.5"/></svg></span> Lessons</button>
+      <button data-view="prep"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4.5" y="4.5" width="15" height="16" rx="4"/><path d="M9 3.5h6a1.5 1.5 0 0 1 1.5 1.5v.5a1.5 1.5 0 0 1-1.5 1.5H9A1.5 1.5 0 0 1 7.5 5.5V5A1.5 1.5 0 0 1 9 3.5z"/><path d="M8.5 12h7M8.5 16h4"/></svg></span> Prep</button>
+      <button data-view="trends"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M5 15l4.5-5 3.5 3.2L19 6"/></svg></span> Trends</button>
+      <button data-view="terms"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 7c-2-1.8-4-2.2-7-2v13c3-.2 5 .2 7 2 2-1.8 4-2.2 7-2V5c-3-.2-5 .2-7 2z"/><path d="M12 7v13"/></svg></span> Terms</button>
     </nav>
 
     <!-- Main content -->
@@ -507,11 +651,11 @@
 
   <!-- Bottom tab nav (mobile) -->
   <nav class="tabnav" id="tabnav">
-    <button data-view="log"><span class="ic">🎯</span> Log</button>
-    <button data-view="lessons"><span class="ic">📘</span> Lessons</button>
-    <button data-view="prep"><span class="ic">📋</span> Prep</button>
-    <button data-view="trends"><span class="ic">📈</span> Trends</button>
-    <button data-view="terms"><span class="ic">📖</span> Terms</button>
+    <button data-view="log"><span class="ic"><svg viewBox="0 0 24 24"><path d="M6 21V4"/><path d="M6 5c4-2.2 8 2 12-.2v7c-4 2.2-8-2-12 .2"/></svg></span> Log</button>
+    <button data-view="lessons"><span class="ic"><svg viewBox="0 0 24 24"><path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v14H7.5A2.5 2.5 0 0 0 5 19.5z"/><path d="M5 19.5A2.5 2.5 0 0 1 7.5 17H19v4H7.5"/></svg></span> Lessons</button>
+    <button data-view="prep"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4.5" y="4.5" width="15" height="16" rx="4"/><path d="M9 3.5h6a1.5 1.5 0 0 1 1.5 1.5v.5a1.5 1.5 0 0 1-1.5 1.5H9A1.5 1.5 0 0 1 7.5 5.5V5A1.5 1.5 0 0 1 9 3.5z"/><path d="M8.5 12h7M8.5 16h4"/></svg></span> Prep</button>
+    <button data-view="trends"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M5 15l4.5-5 3.5 3.2L19 6"/></svg></span> Trends</button>
+    <button data-view="terms"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 7c-2-1.8-4-2.2-7-2v13c3-.2 5 .2 7 2 2-1.8 4-2.2 7-2V5c-3-.2-5 .2-7 2z"/><path d="M12 7v13"/></svg></span> Terms</button>
   </nav>
 </div>
 
@@ -534,15 +678,23 @@ const STORAGE_KEY = 'rangelog_v1';
 const CLUB_GROUPS = ['Driver', 'Woods/Hybrids', 'Long Irons', 'Mid Irons', 'Wedges'];
 const FLIGHTS = ['Straight', 'Pull', 'Push', 'Slice', 'Hook', 'Fat', 'Thin'];
 
-// Colors used for ball-flight distribution charts.
+// Colors used for ball-flight distribution charts (tuned for the light ground).
 const FLIGHT_COLORS = {
-  Straight: '#4ade5b',
-  Pull:     '#f5b53d',
-  Push:     '#5aa9ff',
-  Slice:    '#ef6b5c',
-  Hook:     '#c07bff',
-  Fat:      '#a67c52',
-  Thin:     '#8fd0c7'
+  Straight: '#1F7A44',
+  Pull:     '#C9A227',
+  Push:     '#2E86C1',
+  Slice:    '#D64541',
+  Hook:     '#8E5BC9',
+  Fat:      '#8A6A3C',
+  Thin:     '#3F9E93'
+};
+
+// Small inline-SVG kit — rounded, illustrated, no external assets.
+const SVG = {
+  ball: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="#FBFBF4"/><circle cx="9" cy="9" r="1.1" fill="rgba(11,93,51,.22)"/><circle cx="13" cy="8" r="1.1" fill="rgba(11,93,51,.18)"/><circle cx="15.5" cy="12" r="1.1" fill="rgba(11,93,51,.18)"/><circle cx="11" cy="13" r="1.1" fill="rgba(11,93,51,.18)"/><circle cx="8.5" cy="15" r="1.1" fill="rgba(11,93,51,.16)"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg>',
+  tick: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.6 10 17l8.5-9.6"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>'
 };
 
 // ---- Terms dictionary (beginner-friendly glossary) ----
@@ -579,9 +731,9 @@ const TERMS = [
   { term: 'Mid Irons',  cat: 'Clubs',       def: 'The 6–8 irons — the workhorse clubs for approach shots into the green.' },
   { term: 'Wedges',     cat: 'Clubs',       def: 'The highest-loft clubs (pitching, gap, sand, lob) for short approaches, chips, and bunker shots.' },
   // On the course — flag color system (pin position on the green)
-  { term: '⛳ Red Flag',           cat: 'On the Course', color: '#ef6b5c', def: 'The pin is at the FRONT of the green. Plan for a shorter shot / less club.' },
-  { term: '⛳ White or Yellow Flag', cat: 'On the Course', color: '#f5b53d', def: 'The pin is in the MIDDLE of the green. Aim for the center.' },
-  { term: '⛳ Blue Flag',          cat: 'On the Course', color: '#5aa9ff', def: 'The pin is at the BACK of the green. Plan for a longer shot / more club.' },
+  { term: '⛳ Red Flag',           cat: 'On the Course', color: '#D64541', def: 'The pin is at the FRONT of the green. Plan for a shorter shot / less club.' },
+  { term: '⛳ White or Yellow Flag', cat: 'On the Course', color: '#B08A15', def: 'The pin is in the MIDDLE of the green. Aim for the center.' },
+  { term: '⛳ Blue Flag',          cat: 'On the Course', color: '#2E86C1', def: 'The pin is at the BACK of the green. Plan for a longer shot / more club.' },
   { term: 'Flag color system',    cat: 'On the Course', def: 'Many courses color the flags by pin position so you can judge distance from afar: red = front, white/yellow = middle, blue = back. Always check the scorecard — colors can vary by course.' }
 ];
 const TERM_CATS = ['Ball Flight', 'Contact', 'Swing', 'Clubs', 'On the Course'];
@@ -802,7 +954,7 @@ function setLockError(msg) {
   if (e) e.textContent = msg || '';
 }
 
-/** Full-screen lock overlay. Idempotent. */
+/** Full-screen lock overlay — the front gate / starter's booth. Idempotent. */
 function showLock() {
   stopPolling();
   if (document.getElementById('lockScreen')) return;
@@ -811,9 +963,26 @@ function showLock() {
   el.className = 'lock';
   el.innerHTML = `
     <div class="lock-card">
-      <div class="lock-logo">⛳</div>
+      <svg class="lock-logo" viewBox="0 0 64 64" aria-hidden="true">
+        <defs>
+          <clipPath id="gateClip"><circle cx="32" cy="32" r="26"/></clipPath>
+          <radialGradient id="gateSky" cx="32%" cy="26%" r="82%">
+            <stop offset="0" stop-color="#8BD450"/><stop offset="1" stop-color="#1F7A44"/>
+          </radialGradient>
+        </defs>
+        <circle cx="32" cy="32" r="30" fill="#F4F1E4"/>
+        <g clip-path="url(#gateClip)">
+          <circle cx="32" cy="32" r="26" fill="url(#gateSky)"/>
+          <ellipse cx="30" cy="56" rx="34" ry="17" fill="#0B5D33"/>
+          <path d="M25 18 V47" stroke="#FBFBF4" stroke-width="3" stroke-linecap="round"/>
+          <path d="M26.5 18.5 q10 1.6 15 6 -6.5 3.4 -15 4.8 z" fill="#D64541"/>
+          <circle cx="40" cy="44" r="4.6" fill="#FBFBF4"/>
+        </g>
+        <circle cx="32" cy="32" r="30" fill="none" stroke="#C9A227" stroke-width="3.2"/>
+      </svg>
+      <span class="eyebrow">Starter's booth</span>
       <h2>RangeLog</h2>
-      <p class="muted">Enter the password to continue.</p>
+      <p class="muted">Check in to play through.</p>
       <input type="password" id="lockInput" placeholder="Password"
              autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
       <div id="lockError" class="lock-error"></div>
@@ -855,13 +1024,13 @@ function mutate(action, optimistic) {
   flushOutbox();
 }
 
-/* ---------- Sync status indicator ---------- */
+/* ---------- Sync status indicator (the flag on the clubhouse) ---------- */
 
 const SYNC_LABEL = {
-  connecting: { dot: 'var(--text-faint)', text: 'Connecting…' },
-  synced:     { dot: 'var(--accent)',     text: 'Live' },
-  saving:     { dot: 'var(--amber)',      text: 'Saving…' },
-  offline:    { dot: 'var(--danger)',     text: 'Offline' }
+  connecting: { dot: 'var(--ink-faint)', text: 'Connecting…' },
+  synced:     { dot: 'var(--green)',     text: 'Live' },
+  saving:     { dot: 'var(--gold)',      text: 'Saving…' },
+  offline:    { dot: 'var(--flag)',      text: 'Offline' }
 };
 function setSyncStatus(s) {
   syncStatus = s;
@@ -870,7 +1039,7 @@ function setSyncStatus(s) {
   const cfg = SYNC_LABEL[s] || SYNC_LABEL.connecting;
   el.querySelector('.sync-dot').style.background = cfg.dot;
   el.querySelector('.sync-text').textContent = cfg.text;
-  el.classList.toggle('pulse', s === 'saving' || s === 'connecting');
+  el.dataset.state = SYNC_LABEL[s] ? s : 'connecting';
 }
 
 /* ============================================================================
@@ -966,7 +1135,7 @@ function render() {
 }
 
 /* ---------------------------------------------------------------------------
-   VIEW 1: LOG — fast range flow
+   VIEW 1: LOG — the range / practice tee
    --------------------------------------------------------------------------- */
 
 function newLogDraft() {
@@ -1007,6 +1176,7 @@ function renderLogForm(seg) {
   main.innerHTML = `
     <div class="view">
       <div class="view-head">
+        <span class="eyebrow">The Range</span>
         <h2>Log Session</h2>
         <div class="sub">Tap what you hit, save in seconds.</div>
       </div>
@@ -1020,7 +1190,7 @@ function renderLogForm(seg) {
       </div>
 
       <div class="card">
-        <div class="section-label">Club groups hit</div>
+        <div class="section-label">The bag — club groups hit</div>
         <div id="groupBlocks"></div>
       </div>
 
@@ -1038,7 +1208,9 @@ function renderLogForm(seg) {
     </div>
 
     <div class="savebar">
-      <button class="btn primary block" id="saveSession">💾 Save Session</button>
+      <button class="btn primary block" id="saveSession">
+        <span style="width:20px;height:20px;display:block">${SVG.ball}</span> Save Session
+      </button>
     </div>
   `;
 
@@ -1060,20 +1232,20 @@ function drillNameById(id) {
   return null;
 }
 
-/** One past entry, rendered as a card with a delete button. */
+/** One past entry, rendered as a scorecard with a delete button. */
 function sessionEntryHTML(s) {
   const groups = (s.clubGroups || []).map(cg => {
     const flights = flightsOf(cg);
-    const contact = cg.contact ? `<span class="tag-num">contact ${cg.contact}/5</span>` : '';
-    const fl = flights.length ? `<span class="tag-fl">${flights.map(esc).join(', ')}</span>` : '';
-    return `<div class="hist-cg"><strong>${esc(cg.group)}</strong>${contact}${fl}</div>`;
+    const contact = cg.contact ? `<span class="tag-num">${cg.contact}/5</span>` : '';
+    const fl = flights.length ? `<span class="tag-fl">${flights.map(esc).join(' · ')}</span>` : '';
+    return `<div class="hist-cg"><strong style="font-size:0.94rem">${esc(cg.group)}</strong>${contact}${fl}</div>`;
   }).join('') || '<div class="meta">No club groups recorded</div>';
 
   const drillNames = (s.drillsDone || []).map(drillNameById).filter(Boolean);
   const drills = drillNames.length
     ? `<div class="mt8">${drillNames.map(n => `<span class="drill-tag">✓ ${esc(n)}</span>`).join('')}</div>`
     : '';
-  const note = s.note ? `<div class="mt8">💬 <em>${esc(s.note)}</em></div>` : '';
+  const note = s.note ? `<div class="mt8 muted"><em>“${esc(s.note)}”</em></div>` : '';
 
   return `
     <div class="row-item">
@@ -1093,13 +1265,14 @@ function renderLogHistory(seg) {
   const sessions = DATA.sessions.slice().sort(sortByDateDesc);
   const list = sessions.length
     ? sessions.map(sessionEntryHTML).join('')
-    : emptyState('📝', 'No entries yet', 'Logged range sessions will appear here. Switch to “New” to log one.');
+    : emptyState('⛳', 'In the bunker', 'Nothing logged yet — the card is blank. Switch to “New” and hit a few.');
 
   main.innerHTML = `
     <div class="view">
       <div class="view-head">
+        <span class="eyebrow">Rounds logged</span>
         <h2>Entry Log</h2>
-        <div class="sub">${sessions.length} session${sessions.length === 1 ? '' : 's'} logged.</div>
+        <div class="sub">${sessions.length} session${sessions.length === 1 ? '' : 's'} on the card.</div>
       </div>
       ${seg}
       <div class="mt12">${list}</div>
@@ -1133,7 +1306,7 @@ function renderGroupBlocks() {
     let panel = '';
     if (on) {
       const dots = [1,2,3,4,5].map(n =>
-        `<button class="dot ${st.contact === n ? 'on' : ''}" data-grp="${esc(g)}" data-contact="${n}">${n}</button>`
+        `<button class="dot ${st.contact === n ? 'on' : ''}" data-grp="${esc(g)}" data-contact="${n}" aria-label="Contact ${n} of 5">${n}</button>`
       ).join('');
       const sel = st.flights || [];
       const flights = FLIGHTS.map(f =>
@@ -1150,7 +1323,7 @@ function renderGroupBlocks() {
     return `
       <div class="group-block">
         <button class="chip ${on ? 'on' : ''}" style="width:100%; justify-content:space-between" data-grp-toggle="${esc(g)}">
-          <span>${g}</span><span>${on ? '✓' : '+'}</span>
+          <span>${g}</span><span style="font-family:var(--mono)">${on ? '✓' : '+'}</span>
         </button>
         ${panel}
       </div>`;
@@ -1202,12 +1375,12 @@ function renderHomeworkBlock(lesson) {
   }
 
   wrap.innerHTML = `
-    <p class="muted" style="margin-bottom:10px">From your ${fmtDateShort(lesson.date)} lesson — did you work on this?</p>
+    <p class="muted" style="margin-bottom:11px">From your ${fmtDateShort(lesson.date)} lesson — did you work on this?</p>
     ${lesson.drills.map(d => {
       const on = !!logDraft.drillsDone[d.id];
       return `
         <div class="hw-item ${on ? 'on' : ''}" data-drill="${esc(d.id)}">
-          <div class="hw-box">${on ? '✓' : ''}</div>
+          <div class="hw-box">${SVG.tick}</div>
           <div class="hw-name">${esc(d.name)}</div>
         </div>`;
     }).join('')}
@@ -1245,11 +1418,11 @@ function saveSessionFromDraft() {
 
   logDraft = newLogDraft();
   renderLog();
-  toast('✅ Session saved');
+  toast('Session saved', true);
 }
 
 /* ---------------------------------------------------------------------------
-   VIEW 2: LESSONS
+   VIEW 2: LESSONS — the pro shop / lesson tee
    --------------------------------------------------------------------------- */
 
 function renderLessons() {
@@ -1258,7 +1431,7 @@ function renderLessons() {
 
   let list;
   if (!lessons.length) {
-    list = emptyState('📘', 'No lessons yet',
+    list = emptyState('🏌️', 'The lesson tee is empty',
       'Add your first lesson to capture what your coach worked on and the drills to practice.');
   } else {
     list = lessons.map(l => {
@@ -1274,7 +1447,7 @@ function renderLessons() {
               ${isActive ? '<span class="pill">Active homework</span>' : ''}
             </div>
             ${l.focus ? `<div class="mt8"><span class="meta">Focus:</span> ${esc(l.focus)}</div>` : ''}
-            ${l.swingThought ? `<div class="mt8">💭 <em>${esc(l.swingThought)}</em></div>` : ''}
+            ${l.swingThought ? `<div class="mt8 muted"><em>“${esc(l.swingThought)}”</em></div>` : ''}
             <div class="mt8">${drills}</div>
             <div class="mt12" style="display:flex; gap:8px">
               <button class="btn sm ghost" data-edit="${esc(l.id)}">Edit</button>
@@ -1288,6 +1461,7 @@ function renderLessons() {
   main.innerHTML = `
     <div class="view">
       <div class="view-head">
+        <span class="eyebrow">The Pro Shop</span>
         <h2>Lessons</h2>
         <div class="sub">Your most recent lesson sets the current homework.</div>
       </div>
@@ -1373,7 +1547,7 @@ function submitLesson(editing, drills) {
   });
   closeModal();
   renderLessons();
-  toast(editing ? '✅ Lesson updated' : '✅ Lesson added');
+  toast(editing ? 'Lesson updated' : 'Lesson added', true);
 }
 
 function deleteLesson(id) {
@@ -1392,7 +1566,7 @@ function deleteLesson(id) {
 }
 
 /* ---------------------------------------------------------------------------
-   VIEW 3: PREP — "show your coach"
+   VIEW 3: PREP — the caddie report you hand your coach
    --------------------------------------------------------------------------- */
 
 function renderPrep() {
@@ -1401,8 +1575,8 @@ function renderPrep() {
   if (!lesson) {
     main.innerHTML = `
       <div class="view">
-        <div class="view-head"><h2>Prep</h2><div class="sub">A summary to show your coach.</div></div>
-        ${emptyState('📋', 'No active lesson', 'Add a lesson first — Prep summarizes every range session since your latest lesson.')}
+        <div class="view-head"><span class="eyebrow">The Caddie Report</span><h2>Prep</h2><div class="sub">A summary to show your coach.</div></div>
+        ${emptyState('📋', 'Nothing to hand over', 'Add a lesson first — Prep summarizes every range session since your latest lesson.')}
       </div>`;
     return;
   }
@@ -1414,7 +1588,7 @@ function renderPrep() {
     const count = sessions.filter(s => (s.drillsDone || []).includes(d.id)).length;
     const pct = sessions.length ? Math.round(count / sessions.length * 100) : 0;
     return `
-      <div style="margin-bottom:12px">
+      <div style="margin-bottom:13px">
         <div class="kv" style="border:none; padding:0 0 2px">
           <span class="k">${esc(d.name)}</span>
           <span class="v">${count}/${sessions.length} sessions</span>
@@ -1444,7 +1618,7 @@ function renderPrep() {
 
   const contactRows = CLUB_GROUPS.filter(g => byGroupContacts[g]).map(g => {
     const a = avg(byGroupContacts[g]);
-    return `<div class="kv"><span class="k">${g}</span><span class="v">${a.toFixed(1)} <span style="color:var(--text-faint);font-weight:400">/5</span></span></div>`;
+    return `<div class="kv"><span class="k">${g}</span><span class="v">${a.toFixed(1)} <span style="color:var(--ink-faint);font-weight:400">/5</span></span></div>`;
   }).join('') || '<p class="muted">No contact ratings logged yet.</p>';
 
   // --- Most common miss per group ---
@@ -1454,7 +1628,7 @@ function renderPrep() {
     Object.keys(counts).forEach(f => { if (counts[f] > bestN) { bestN = counts[f]; best = f; } });
     const isMiss = best !== 'Straight';
     return `<div class="kv"><span class="k">${g}</span>
-      <span class="v ${isMiss ? '' : 'grey'}" style="${isMiss ? 'color:var(--amber)' : ''}">${best} ×${bestN}</span></div>`;
+      <span class="v ${isMiss ? '' : 'grey'}" style="${isMiss ? 'color:#7D6413' : ''}">${best} ×${bestN}</span></div>`;
   }).join('') || '<p class="muted">No ball-flight data logged yet.</p>';
 
   // --- Notes ---
@@ -1467,14 +1641,15 @@ function renderPrep() {
   main.innerHTML = `
     <div class="view">
       <div class="view-head">
+        <span class="eyebrow">The Caddie Report</span>
         <h2>Prep</h2>
         <div class="sub">Since your ${fmtDate(lesson.date)} lesson${span >= 0 ? ` · ${span} day${span === 1 ? '' : 's'} ago` : ''}</div>
       </div>
 
-      <div class="card raised">
+      <div class="card raised scorecard">
         <div class="section-label">Since last lesson</div>
         ${lesson.focus ? `<p style="margin-bottom:6px"><span class="meta">Focus:</span> ${esc(lesson.focus)}</p>` : ''}
-        ${lesson.swingThought ? `<p style="margin-bottom:12px">💭 <em>${esc(lesson.swingThought)}</em></p>` : ''}
+        ${lesson.swingThought ? `<p class="muted" style="margin-bottom:13px"><em>“${esc(lesson.swingThought)}”</em></p>` : ''}
         <div class="stat-grid">
           <div class="stat"><div class="num">${sessions.length}</div><div class="lbl">Range sessions</div></div>
           <div class="stat"><div class="num">${overallAvg ? overallAvg.toFixed(1) : '–'}</div><div class="lbl">Avg contact /5</div></div>
@@ -1506,10 +1681,15 @@ function renderPrep() {
 }
 
 /* ---------------------------------------------------------------------------
-   VIEW 4: TRENDS — charts (inline SVG, no libraries)
+   VIEW 4: TRENDS — the leaderboard (inline SVG, no libraries)
    --------------------------------------------------------------------------- */
 
 let trendGroupFilter = 'All';
+
+// Chart palette, kept in one place so the plots stay on-brand.
+const C_GRID = 'rgba(11,93,51,0.16)';
+const C_AXIS = '#7A9186';
+const C_INK  = '#0B5D33';
 
 function renderTrends() {
   const sessions = DATA.sessions.slice().sort((a, b) => a.date < b.date ? -1 : 1);
@@ -1517,15 +1697,15 @@ function renderTrends() {
   if (!sessions.length) {
     main.innerHTML = `
       <div class="view">
-        <div class="view-head"><h2>Trends</h2><div class="sub">Your progress over time.</div></div>
-        ${emptyState('📈', 'No sessions yet', 'Log a few range sessions and your trends will show up here.')}
+        <div class="view-head"><span class="eyebrow">The Leaderboard</span><h2>Trends</h2><div class="sub">Your progress over time.</div></div>
+        ${emptyState('📊', 'No card on the board', 'Log a few range sessions and your trends will show up here.')}
       </div>`;
     return;
   }
 
   main.innerHTML = `
     <div class="view">
-      <div class="view-head"><h2>Trends</h2><div class="sub">Across all ${sessions.length} logged session${sessions.length===1?'':'s'}.</div></div>
+      <div class="view-head"><span class="eyebrow">The Leaderboard</span><h2>Trends</h2><div class="sub">Across all ${sessions.length} logged session${sessions.length===1?'':'s'}.</div></div>
 
       <div class="card">
         <div class="section-label">Sessions per week (last 8 weeks)</div>
@@ -1534,9 +1714,9 @@ function renderTrends() {
 
       <div class="card">
         <div class="section-label">Contact quality over time</div>
-        <div class="chip-row" id="trendFilter" style="margin-bottom:12px"></div>
+        <div class="chip-row" id="trendFilter" style="margin-bottom:13px"></div>
         <div class="chart-wrap" id="chartContact"></div>
-        <p class="muted mt8">Amber lines mark lessons.</p>
+        <p class="muted mt8">Little flags mark lessons.</p>
       </div>
 
       <div class="card">
@@ -1565,7 +1745,7 @@ function drawContactFilter() {
     }));
 }
 
-/** Bar chart: sessions per week over the last 8 weeks. */
+/** Bar chart: sessions per week over the last 8 weeks — rounded turf bars. */
 function drawWeeksChart(sessions) {
   const weeks = 8;
   const now = new Date(todayISO());
@@ -1583,10 +1763,10 @@ function drawWeeksChart(sessions) {
     for (const b of buckets) { if (d >= b.start && d <= b.end) { b.count++; break; } }
   });
 
-  const W = 640, H = 200, padL = 28, padB = 28, padT = 12, padR = 10;
+  const W = 640, H = 210, padL = 30, padB = 30, padT = 16, padR = 10;
   const maxV = Math.max(3, ...buckets.map(b => b.count));
   const cw = (W - padL - padR) / weeks;
-  const bw = cw * 0.6;
+  const bw = cw * 0.56;
   const chartH = H - padB - padT;
 
   let bars = '', labels = '';
@@ -1594,28 +1774,32 @@ function drawWeeksChart(sessions) {
     const x = padL + i * cw + (cw - bw) / 2;
     const h = maxV ? (b.count / maxV) * chartH : 0;
     const y = padT + chartH - h;
-    bars += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="4" fill="url(#gGreen)"></rect>`;
-    if (b.count > 0) bars += `<text x="${x + bw/2}" y="${y - 5}" fill="#f4f8f5" font-size="11" text-anchor="middle" font-weight="700">${b.count}</text>`;
-    labels += `<text x="${x + bw/2}" y="${H - 9}" fill="#6f8778" font-size="10" text-anchor="middle">${b.label}</text>`;
+    if (h > 0) {
+      bars += `<rect x="${x}" y="${y}" width="${bw}" height="${Math.max(h, bw/2)}" rx="${bw/2}" fill="url(#gGreen)"></rect>`;
+      bars += `<text x="${x + bw/2}" y="${y - 7}" fill="${C_INK}" font-size="12" text-anchor="middle" font-weight="800">${b.count}</text>`;
+    } else {
+      bars += `<circle cx="${x + bw/2}" cy="${padT + chartH - 3}" r="3" fill="${C_GRID}"></circle>`;
+    }
+    labels += `<text x="${x + bw/2}" y="${H - 9}" fill="${C_AXIS}" font-size="10.5" text-anchor="middle" font-weight="700">${b.label}</text>`;
   });
   // y gridlines
   let grid = '';
   for (let v = 0; v <= maxV; v++) {
     const y = padT + chartH - (v / maxV) * chartH;
-    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#274233" stroke-width="1"></line>`;
-    grid += `<text x="${padL-6}" y="${y+3}" fill="#6f8778" font-size="9" text-anchor="end">${v}</text>`;
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="${C_GRID}" stroke-width="1.5" stroke-linecap="round"></line>`;
+    grid += `<text x="${padL-8}" y="${y+3.5}" fill="${C_AXIS}" font-size="10" text-anchor="end" font-weight="700">${v}</text>`;
   }
 
   document.getElementById('chartWeeks').innerHTML = `
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sessions per week">
       <defs><linearGradient id="gGreen" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#4ade5b"></stop><stop offset="1" stop-color="#2f9c3d"></stop>
+        <stop offset="0" stop-color="#8BD450"></stop><stop offset="1" stop-color="#1F7A44"></stop>
       </linearGradient></defs>
       ${grid}${bars}${labels}
     </svg>`;
 }
 
-/** Line chart: contact quality over time, with lesson markers. */
+/** Line chart: contact quality over time, over a mower-striped plot, with flagstick lesson markers. */
 function drawContactChart(sessions) {
   const el = document.getElementById('chartContact');
   if (!el) return;
@@ -1635,7 +1819,7 @@ function drawContactChart(sessions) {
     return;
   }
 
-  const W = 640, H = 220, padL = 30, padR = 14, padT = 14, padB = 30;
+  const W = 640, H = 230, padL = 32, padR = 16, padT = 18, padB = 32;
   const chartW = W - padL - padR, chartH = H - padT - padB;
 
   const times = pts.map(p => p.t);
@@ -1644,51 +1828,57 @@ function drawContactChart(sessions) {
   const xOf = t => padL + ((t - minT) / (maxT - minT)) * chartW;
   const yOf = v => padT + chartH - ((v - 1) / 4) * chartH;   // scale 1..5
 
-  // gridlines for contact 1..5
-  let grid = '';
+  // mower-stripe plot bed + gridlines for contact 1..5
+  let grid = `<rect x="${padL}" y="${padT}" width="${chartW}" height="${chartH}" rx="14" fill="url(#gStripe)"></rect>`;
   for (let v = 1; v <= 5; v++) {
     const y = yOf(v);
-    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#274233"></line>`;
-    grid += `<text x="${padL-6}" y="${y+3}" fill="#6f8778" font-size="9" text-anchor="end">${v}</text>`;
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="${C_GRID}" stroke-width="1.5" stroke-linecap="round"></line>`;
+    grid += `<text x="${padL-8}" y="${y+3.5}" fill="${C_AXIS}" font-size="10" text-anchor="end" font-weight="700">${v}</text>`;
   }
 
-  // lesson markers (within time range)
+  // lesson markers — little flagsticks planted on the plot
   let markers = '';
   DATA.lessons.forEach(l => {
     const t = Date.parse(l.date);
     if (t < minT || t > maxT) return;
     const x = xOf(t);
-    markers += `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT+chartH}" stroke="#f5b53d" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.8"></line>`;
-    markers += `<circle cx="${x}" cy="${padT}" r="3" fill="#f5b53d"></circle>`;
+    markers += `<line x1="${x}" y1="${padT+6}" x2="${x}" y2="${padT+chartH}" stroke="#C9A227" stroke-width="2" stroke-dasharray="1 6" stroke-linecap="round" opacity="0.85"></line>`;
+    markers += `<path d="M${x} ${padT+3} q9 1.6 13 5 -5.6 3 -13 4.2 z" fill="#C9A227"></path>`;
   });
 
   // line + points
   const line = pts.map((p, i) => `${i ? 'L' : 'M'}${xOf(p.t).toFixed(1)} ${yOf(p.v).toFixed(1)}`).join(' ');
   const dots = pts.map(p =>
-    `<circle cx="${xOf(p.t).toFixed(1)}" cy="${yOf(p.v).toFixed(1)}" r="4" fill="#4ade5b" stroke="#0c1611" stroke-width="1.5"></circle>`
+    `<circle cx="${xOf(p.t).toFixed(1)}" cy="${yOf(p.v).toFixed(1)}" r="5" fill="#FBFBF4" stroke="#1F7A44" stroke-width="3"></circle>`
   ).join('');
   // area under line
   const area = `${line} L${xOf(pts[pts.length-1].t).toFixed(1)} ${padT+chartH} L${xOf(pts[0].t).toFixed(1)} ${padT+chartH} Z`;
 
   // x labels (first & last)
   const xlabels = `
-    <text x="${xOf(pts[0].t)}" y="${H-9}" fill="#6f8778" font-size="10" text-anchor="start">${fmtDateShort(pts[0].date)}</text>
-    <text x="${xOf(pts[pts.length-1].t)}" y="${H-9}" fill="#6f8778" font-size="10" text-anchor="end">${fmtDateShort(pts[pts.length-1].date)}</text>`;
+    <text x="${xOf(pts[0].t)}" y="${H-9}" fill="${C_AXIS}" font-size="10.5" text-anchor="start" font-weight="700">${fmtDateShort(pts[0].date)}</text>
+    <text x="${xOf(pts[pts.length-1].t)}" y="${H-9}" fill="${C_AXIS}" font-size="10.5" text-anchor="end" font-weight="700">${fmtDateShort(pts[pts.length-1].date)}</text>`;
 
   el.innerHTML = `
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Contact quality over time">
-      <defs><linearGradient id="gArea" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#4ade5b" stop-opacity="0.35"></stop>
-        <stop offset="1" stop-color="#4ade5b" stop-opacity="0"></stop>
-      </linearGradient></defs>
+      <defs>
+        <linearGradient id="gArea" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#4CAF50" stop-opacity="0.42"></stop>
+          <stop offset="1" stop-color="#4CAF50" stop-opacity="0.02"></stop>
+        </linearGradient>
+        <pattern id="gStripe" width="52" height="52" patternUnits="userSpaceOnUse" patternTransform="rotate(115)">
+          <rect width="26" height="52" fill="rgba(31,122,68,0.045)"></rect>
+          <rect x="26" width="26" height="52" fill="rgba(76,175,80,0.085)"></rect>
+        </pattern>
+      </defs>
       ${grid}${markers}
       <path d="${area}" fill="url(#gArea)"></path>
-      <path d="${line}" fill="none" stroke="#4ade5b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></path>
+      <path d="${line}" fill="none" stroke="#1F7A44" stroke-width="3.4" stroke-linejoin="round" stroke-linecap="round"></path>
       ${dots}${xlabels}
     </svg>`;
 }
 
-/** Horizontal stacked bars: ball-flight distribution per club group. */
+/** Horizontal stacked bars: ball-flight distribution per club group (rounded ends). */
 function drawFlightChart(sessions) {
   const el = document.getElementById('chartFlights');
 
@@ -1707,28 +1897,29 @@ function drawFlightChart(sessions) {
     return;
   }
 
-  const rowH = 30, gap = 16, labelW = 96, barW = 420, padR = 12;
+  const rowH = 30, gap = 18, labelW = 100, barW = 420, padR = 12;
   const W = labelW + barW + padR;
   const H = groups.length * (rowH + gap);
 
-  let rows = '';
+  let clips = '', rows = '';
   groups.forEach((g, i) => {
     const counts = data[g];
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
     const y = i * (rowH + gap);
     let x = labelW;
     let segs = '';
+    clips += `<clipPath id="fc${i}"><rect x="${labelW}" y="${y}" width="${barW}" height="${rowH}" rx="${rowH/2}"></rect></clipPath>`;
     FLIGHTS.forEach(f => {
       const c = counts[f]; if (!c) return;
       const w = (c / total) * barW;
       segs += `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${rowH}" fill="${FLIGHT_COLORS[f]}">
         <title>${g} — ${f}: ${c}</title></rect>`;
-      if (w > 24) segs += `<text x="${(x + w/2).toFixed(1)}" y="${y + rowH/2 + 4}" fill="#04140a" font-size="11" font-weight="700" text-anchor="middle">${c}</text>`;
+      if (w > 26) segs += `<text x="${(x + w/2).toFixed(1)}" y="${y + rowH/2 + 4}" fill="#FBFBF4" font-size="11.5" font-weight="800" text-anchor="middle">${c}</text>`;
       x += w;
     });
     rows += `
-      <text x="0" y="${y + rowH/2 + 4}" fill="#f4f8f5" font-size="12" font-weight="600">${g}</text>
-      ${segs}`;
+      <text x="0" y="${y + rowH/2 + 4}" fill="${C_INK}" font-size="12.5" font-weight="800">${g}</text>
+      <g clip-path="url(#fc${i})">${segs}</g>`;
   });
 
   const legend = FLIGHTS.map(f =>
@@ -1737,13 +1928,15 @@ function drawFlightChart(sessions) {
 
   el.innerHTML = `
     <div class="chart-wrap">
-      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMid meet" role="img" aria-label="Ball flight distribution">${rows}</svg>
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMid meet" role="img" aria-label="Ball flight distribution">
+        <defs>${clips}</defs>${rows}
+      </svg>
     </div>
     <div class="legend">${legend}</div>`;
 }
 
 /* ---------------------------------------------------------------------------
-   VIEW 5: TERMS — beginner glossary with search
+   VIEW 5: TERMS — the rulebook / yardage book
    --------------------------------------------------------------------------- */
 
 let termQuery = '';
@@ -1776,16 +1969,17 @@ function renderTerms() {
   });
 
   const body = matches.length ? sections
-    : `<div class="empty"><div class="big">🔍</div><h3>No matches</h3><p>Nothing found for "${esc(termQuery)}". Try another word.</p></div>`;
+    : emptyState('🔍', 'No matches', `Nothing found for “${esc(termQuery)}”. Try another word.`);
 
   main.innerHTML = `
     <div class="view">
       <div class="view-head">
+        <span class="eyebrow">The Rulebook</span>
         <h2>Terms</h2>
         <div class="sub">Golf shorthand, in plain English.</div>
       </div>
       <div class="card">
-        <input type="text" id="termSearch" placeholder="🔍 Search terms (e.g. slice, tempo, wedge)" value="${esc(termQuery)}">
+        <input type="text" id="termSearch" placeholder="Search terms (e.g. slice, tempo, wedge)" value="${esc(termQuery)}">
       </div>
       ${body}
     </div>`;
@@ -1812,12 +2006,20 @@ function emptyState(icon, title, msg, ctaLabel, ctaView) {
 }
 
 let toastTimer = null;
-function toast(msg) {
+/** Toast. Pass ball=true for the putt-drop confirmation. */
+function toast(msg, ball) {
   const old = document.querySelector('.toast');
   if (old) old.remove();
   const t = document.createElement('div');
   t.className = 'toast';
-  t.textContent = msg;
+  if (ball) {
+    const b = document.createElement('span');
+    b.className = 'ball';
+    t.appendChild(b);
+  }
+  const span = document.createElement('span');
+  span.textContent = msg;
+  t.appendChild(span);
   document.body.appendChild(t);
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.remove(), 1900);
@@ -1890,7 +2092,7 @@ document.getElementById('btnExport').addEventListener('click', () => {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-  toast('⬇ Data exported');
+  toast('Data exported');
 });
 
 // --- Import ---
@@ -1929,7 +2131,7 @@ function confirmImport(parsed) {
         mutate({ action: 'replace-all', data }, () => { DATA = data; });
         closeModal();
         render();
-        toast('⬆ Data imported');
+        toast('Data imported', true);
       } }
     ]);
 }
